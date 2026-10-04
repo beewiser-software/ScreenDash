@@ -888,7 +888,6 @@
     audioCtx: null, analyser: null, stream: null, freq: null
   };
   var VIZ_FPS = 30, VIZ_SEG = 3, VIZ_SEG_GAP = 1, VIZ_BAR_GAP = 2;
-  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function vizNote(text) {
     var el = $('#vizNote');
@@ -1040,9 +1039,9 @@
     cancelAnimationFrame(viz.raf);
     viz.raf = 0;
     if (mode !== 'mic') stopMic();
-    if (mode === 'off' || (mode === 'ambient' && reducedMotion)) {
+    if (mode === 'off') {
       viz.canvas.hidden = true;
-      vizNote(mode === 'ambient' ? 'Ambient animation is paused because Reduce Motion is on.' : '');
+      vizNote('');
       layout();
       return;
     }

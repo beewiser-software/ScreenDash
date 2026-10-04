@@ -8,7 +8,8 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="description" content="A calm always-on dashboard: clock, weather, word and quote of the day.">
   <title>ScreenDash</title>
-  <link rel="stylesheet" href="styles.css">
+  <!-- Bump ?v= on every deploy: iPad Safari caches assets aggressively, especially Home Screen web apps. -->
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 
@@ -170,7 +171,7 @@
     </p>
   </div>
 
-  <script src="data.js"></script>
-  <script src="app.js"></script>
+  <script src="data.js?v=4"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
