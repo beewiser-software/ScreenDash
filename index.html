@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="description" content="A calm always-on dashboard: clock, weather, word and quote of the day.">
+  <title>ScreenDash</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <main id="grid" class="grid" aria-label="Dashboard">
+
+    <section class="card card-clock" data-span="2" aria-label="Clock">
+      <div class="clock">
+        <div class="clock-time">
+          <span class="clock-hm" id="clockHM">--:--</span>
+          <span class="clock-side"><span id="clockAmPm"></span><span id="clockSec">--</span></span>
+        </div>
+        <div class="clock-sub">
+          <div class="clock-day" id="clockDay">&nbsp;</div>
+          <div class="clock-date" id="clockDate">&nbsp;</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card card-now" data-span="1" aria-label="Current temperature">
+      <div class="scene" id="nowScene" aria-hidden="true">
+        <div class="sky"></div>
+        <div class="sun-rays"></div><div class="sun"></div>
+        <div class="moon"></div>
+        <div class="stars"></div><div class="stars2"></div>
+        <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+        <div class="rain"></div>
+        <div class="snow"></div>
+        <div class="fog f1"></div><div class="fog f2"></div>
+        <div class="flash"></div>
+        <svg class="bolt" viewBox="0 0 24 44"><path d="M14 0 2 24h8L7 44 22 16h-9z"/></svg>
+      </div>
+      <div class="card-head">
+        <div class="card-label" data-icon="thermo">Now</div>
+        <div class="card-meta" data-icon="pin"><span id="nowLocation">Locating…</span></div>
+      </div>
+      <div class="now-top">
+        <div class="now-temp" id="nowTemp">--°</div>
+        <div class="now-icon" id="nowIcon"></div>
+      </div>
+      <div class="now-feels" id="nowFeels">Loading weather…</div>
+      <div class="now-hilo"><span class="chip" id="nowHi">H --°</span><span class="chip" id="nowLo">L --°</span></div>
+    </section>
+
+    <section class="card card-cond" data-span="1" aria-label="Today's conditions">
+      <div class="card-label" data-icon="sun">Today</div>
+      <div class="cond-main">
+        <div class="cond-icon" id="condIcon"></div>
+        <div class="cond-text" id="condText">Loading…</div>
+      </div>
+      <div class="stats" id="condStats"></div>
+    </section>
+
+    <section class="card card-chart" data-span="2" aria-label="Feels-like temperature today">
+      <div class="card-head">
+        <div class="card-label" data-icon="activity">Feels like today</div>
+        <div class="card-meta"><span class="lg lg-feels"></span>Feels like<span class="lg lg-temp"></span>Actual</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="feelsChart"></canvas>
+        <div class="chart-empty muted" id="chartEmpty">Loading…</div>
+      </div>
+    </section>
+
+    <section class="card card-word" data-span="1" aria-label="Word of the day">
+      <div class="card-label" data-icon="book">Word of the day</div>
+      <div id="wordBody"><div class="muted">Loading…</div></div>
+    </section>
+
+    <section class="card card-quote" data-span="1" aria-label="Quote of the day">
+      <div class="card-label" data-icon="quote">Quote of the day</div>
+      <div class="quote-mark" aria-hidden="true">“</div>
+      <blockquote class="quote-text" id="quoteText">Loading…</blockquote>
+      <div class="quote-author" id="quoteAuthor"></div>
+    </section>
+
+    <section class="card card-forecast" data-span="2" data-span-wide="4" aria-label="7-day forecast">
+      <div class="card-head">
+        <div class="card-label" data-icon="calendar">7-day forecast</div>
+        <div class="card-meta"><span id="nowUpdated"></span></div>
+      </div>
+      <div class="forecast" id="forecast"><div class="muted">Loading…</div></div>
+    </section>
+
+  </main>
+
+  <button id="settingsBtn" class="fab" type="button" aria-label="Open settings" data-icon="sliders"></button>
+  <div id="backdrop" class="backdrop" hidden></div>
+
+  <div id="panel" class="panel" role="dialog" aria-label="Settings" hidden>
+    <div class="panel-head">
+      <h2>Settings</h2>
+      <button id="panelClose" class="icon-btn" type="button" aria-label="Close settings">&times;</button>
+    </div>
+
+    <h3>Theme</h3>
+    <div class="swatches" id="swatches"></div>
+
+    <h3>Clock</h3>
+    <div class="seg" id="hourSeg">
+      <button type="button" data-h12="1">12-hour</button>
+      <button type="button" data-h12="0">24-hour</button>
+    </div>
+    <div class="sub">Clock font</div>
+    <div class="fonts" id="clockFontPick"></div>
+
+    <h3>Font</h3>
+    <div class="fonts" id="fontPick"></div>
+
+    <h3>Widgets</h3>
+    <div class="row">
+      <span>Animated weather background</span>
+      <div class="seg" id="animSeg">
+        <button type="button" data-on="1">On</button>
+        <button type="button" data-on="0">Off</button>
+      </div>
+    </div>
+    <div class="sub">Pick a widget to colour</div>
+    <div class="chips" id="widgetPick"></div>
+    <div class="sub">Background</div>
+    <div class="palette" id="bgPalette"></div>
+    <div class="sub">Text</div>
+    <div class="palette" id="textPalette"></div>
+    <button id="resetWidgets" class="btn" type="button">Reset all widget colours</button>
+
+    <h3>Location</h3>
+    <div class="loc-current" id="locCurrent">Detecting…</div>
+    <input id="locSearch" class="input" type="search" placeholder="Search for a city…"
+           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <div class="results" id="locResults"></div>
+    <button id="locAuto" class="btn" type="button">Use my current location</button>
+
+    <p class="credits muted">
+      Weather by <a href="https://open-meteo.com/" rel="noopener" target="_blank">Open-Meteo</a> ·
+      Definitions by <a href="https://dictionaryapi.dev/" rel="noopener" target="_blank">Free Dictionary API</a> ·
+      Quotes by <a href="https://dummyjson.com/" rel="noopener" target="_blank">DummyJSON</a>
+    </p>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
