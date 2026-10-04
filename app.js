@@ -117,6 +117,8 @@
     clockFont: saved.clockFont || 'system',
     weatherAnim: saved.weatherAnim !== false,
     visualizer: saved.visualizer || 'ambient', // 'off' | 'ambient' | 'mic'
+    dbMeter: !!saved.dbMeter,
+    dbOffset: typeof saved.dbOffset === 'number' ? saved.dbOffset : 94, // dBFS -> approx. dB SPL
     world: saved.world || { on: true, zones: [
       { name: 'New Delhi', tz: 'Asia/Kolkata' }, { name: 'London', tz: 'Europe/London' }, { name: 'Sydney', tz: 'Australia/Sydney' }
     ] },
@@ -944,15 +946,19 @@
   }
 
   /* ---------------------------------------------------------------------- */
-  /* Audio visualizer (Winamp-style segmented bars with falling peaks)      */
+  /* Audio: Winamp-style visualizer + room sound-level (dB) meter           */
   /* ---------------------------------------------------------------------- */
   var viz = {
     canvas: $('#viz'), ctx: null, raf: 0, last: 0,
     levels: [], peaks: [], holds: [],
     colors: { low: '#818cf8', mid: '#38bdf8', top: '#e2e8f0' },
-    audioCtx: null, analyser: null, stream: null, freq: null
+    audioCtx: null, analyser: null, stream: null, freq: null, wave: null,
+    db: -Infinity, dbShown: 0
   };
   var VIZ_FPS = 30, VIZ_SEG = 3, VIZ_SEG_GAP = 1, VIZ_BAR_GAP = 2;
+  var DB_LEVELS = [[35, 'Quiet'], [50, 'Calm'], [65, 'Moderate'], [80, 'Loud'], [Infinity, 'Very loud']];
+
+  function micNeeded() { return custom.visualizer === 'mic' || custom.dbMeter; }
 
   function vizNote(text) {
     var el = $('#vizNote');
@@ -1003,11 +1009,42 @@
     return out;
   }
 
-  function vizFrame(ts) {
-    viz.raf = requestAnimationFrame(vizFrame);
+  function audioFrame(ts) {
+    viz.raf = requestAnimationFrame(audioFrame);
     if (ts - viz.last < 1000 / VIZ_FPS || document.hidden) return;
     viz.last = ts;
+    if (custom.visualizer !== 'off') drawBars(ts);
+    if (custom.dbMeter) updateDb(ts);
+  }
 
+  // RMS of the time-domain signal -> dBFS, smoothed, then offset to an approximate dB SPL reading.
+  function updateDb(ts) {
+    var el = $('#db');
+    if (!viz.analyser || !viz.audioCtx || viz.audioCtx.state !== 'running') {
+      $('#dbNum').textContent = '--';
+      $('#dbLabel').textContent = viz.analyser ? 'Tap to start' : 'Mic needed';
+      el.className = 'db';
+      return;
+    }
+    viz.analyser.getByteTimeDomainData(viz.wave);
+    var sum = 0;
+    for (var i = 0; i < viz.wave.length; i++) { var x = (viz.wave[i] - 128) / 128; sum += x * x; }
+    var rms = Math.sqrt(sum / viz.wave.length);
+    var dbfs = rms > 0 ? 20 * Math.log10(rms) : -100;
+    var db = Math.max(0, dbfs + custom.dbOffset);
+    // Fast attack, slow release so peaks register but the number doesn't flicker.
+    viz.db = db > viz.db ? viz.db + (db - viz.db) * 0.5 : viz.db + (db - viz.db) * 0.08;
+    if (!isFinite(viz.db)) viz.db = db;
+    if (ts - viz.dbShown < 250) return;
+    viz.dbShown = ts;
+    var v = Math.round(viz.db), label = '';
+    for (var k = 0; k < DB_LEVELS.length; k++) if (v < DB_LEVELS[k][0]) { label = DB_LEVELS[k][1]; break; }
+    $('#dbNum').textContent = v;
+    $('#dbLabel').textContent = label;
+    el.className = 'db' + (v >= 80 ? ' very-loud' : v >= 65 ? ' loud' : '');
+  }
+
+  function drawBars(ts) {
     var c = viz.canvas, W = c.clientWidth, H = c.clientHeight;
     if (!W || !H) return;
     var dpr = window.devicePixelRatio || 1;
@@ -1069,7 +1106,7 @@
     if (viz.analyser) return;
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      vizNote('Microphone input is not supported here; showing ambient bars.');
+      vizNote('Microphone input is not supported here.');
       return;
     }
     // Create the context synchronously so a tap in Settings counts as the user gesture iOS requires.
@@ -1077,44 +1114,43 @@
     vizNote('Requesting microphone…');
     navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
       .then(function (stream) {
-        if (custom.visualizer !== 'mic' || !viz.audioCtx) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+        if (!micNeeded() || !viz.audioCtx) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
         viz.stream = stream;
         viz.analyser = viz.audioCtx.createAnalyser();
-        viz.analyser.fftSize = 512;
+        viz.analyser.fftSize = 1024;
         viz.analyser.smoothingTimeConstant = 0.75;
         viz.audioCtx.createMediaStreamSource(stream).connect(viz.analyser);
         viz.freq = new Uint8Array(viz.analyser.frequencyBinCount);
+        viz.wave = new Uint8Array(viz.analyser.fftSize);
+        viz.db = -Infinity;
         if (viz.audioCtx.state === 'suspended') { vizNote('Tap anywhere on the page to start listening.'); resumeAudioOnGesture(); }
         else vizNote('');
       })
       .catch(function () {
-        vizNote('Microphone unavailable or denied; showing ambient bars instead.');
+        vizNote('Microphone unavailable or denied' + (custom.visualizer === 'mic' ? '; showing ambient bars instead.' : '.'));
       });
   }
 
   function stopMic() {
     if (viz.stream) viz.stream.getTracks().forEach(function (t) { t.stop(); });
     if (viz.audioCtx && viz.audioCtx.close) viz.audioCtx.close();
-    viz.stream = null; viz.audioCtx = null; viz.analyser = null; viz.freq = null;
+    viz.stream = null; viz.audioCtx = null; viz.analyser = null; viz.freq = null; viz.wave = null;
   }
 
-  function applyVisualizer() {
+  function applyAudio() {
     var mode = custom.visualizer;
     $all('#vizSeg button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-viz') === mode); });
+    $all('#dbSeg button').forEach(function (b) { b.classList.toggle('active', (b.getAttribute('data-on') === '1') === custom.dbMeter); });
+    $('#dbCalRow').hidden = !custom.dbMeter;
+    $('#dbOffset').textContent = (custom.dbOffset >= 0 ? '+' : '') + custom.dbOffset + ' dB';
+
     cancelAnimationFrame(viz.raf);
     viz.raf = 0;
-    if (mode !== 'mic') stopMic();
-    if (mode === 'off') {
-      viz.canvas.hidden = true;
-      vizNote('');
-      layout();
-      return;
-    }
-    viz.canvas.hidden = false;
-    vizNote('');
+    viz.canvas.hidden = mode === 'off';
+    $('#db').hidden = !custom.dbMeter;
+    if (micNeeded()) startMic(); else { stopMic(); vizNote(''); }
     vizRefreshColors();
-    if (mode === 'mic') startMic();
-    viz.raf = requestAnimationFrame(vizFrame);
+    if (mode !== 'off' || custom.dbMeter) viz.raf = requestAnimationFrame(audioFrame);
     layout();
   }
 
@@ -1244,7 +1280,22 @@
       if (!b) return;
       custom.visualizer = b.getAttribute('data-viz');
       saveCustom();
-      applyVisualizer();
+      applyAudio();
+    });
+    $('#dbSeg').addEventListener('click', function (e) {
+      var b = closestAttr(e.target, this, 'data-on');
+      if (!b) return;
+      custom.dbMeter = b.getAttribute('data-on') === '1';
+      saveCustom();
+      applyAudio();
+    });
+    $('#dbCalRow').addEventListener('click', function (e) {
+      var b = closestAttr(e.target, this, 'data-cal');
+      if (!b) return;
+      var step = b.getAttribute('data-cal');
+      custom.dbOffset = step === 'reset' ? 94 : Math.max(40, Math.min(140, custom.dbOffset + parseInt(step, 10)));
+      saveCustom();
+      $('#dbOffset').textContent = (custom.dbOffset >= 0 ? '+' : '') + custom.dbOffset + ' dB';
     });
 
     // World clocks: three city pickers ("None" leaves a slot empty)
@@ -1390,7 +1441,7 @@
     applyWorld();
     startClock();
     layout();
-    applyVisualizer();
+    applyAudio();
 
     refreshWeather();
     loadWord();

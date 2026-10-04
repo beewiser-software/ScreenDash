@@ -14,7 +14,7 @@ Everything is a static site — no build step, no backend, no accounts, no API k
 
 | Widget | What it shows | Docs |
 |---|---|---|
-| **Clock** | Large digital time (12/24 h) with seconds, day and date, three configurable **world clocks**, and an **audio visualizer** (ambient or live microphone) | [Clock, world clocks & visualizer](docs/clock.md) |
+| **Clock** | Large digital time (12/24 h) with seconds, day and date, three configurable **world clocks**, an **audio visualizer** (ambient or live microphone) and an optional **room sound-level (dB) meter** | [Clock, world clocks & visualizer](docs/clock.md) |
 | **Now** | Current temperature and feels-like, today's high/low, location — with an **animated weather background** (sun, moon, drifting clouds, rain, snow, fog, lightning) | [Weather](docs/weather.md) |
 | **Today** | Condition, humidity, wind, rain chance, UV index, sunrise and sunset | [Weather](docs/weather.md) |
 | **Feels like today** | Hourly feels-like line chart for the day (actual temperature dashed) with a "now" marker | [Weather](docs/weather.md) |
@@ -91,7 +91,7 @@ Optional capabilities degrade gracefully: without microphone access the visualiz
 | Dictionary (definitions, IPA, audio) | [Free Dictionary API](https://dictionaryapi.dev/) with [Datamuse](https://www.datamuse.com/api/) fallback | No |
 | Quotes | [DummyJSON](https://dummyjson.com/) with Quotable and a built-in list as fallbacks | No |
 
-Nothing is sent anywhere except these requests; settings live in the browser's `localStorage`. Microphone audio (if you enable it) is analysed on the device and never leaves it. More in [Data sources & privacy](docs/data-sources.md).
+Nothing is sent anywhere except these requests; settings live in the browser's `localStorage`. Microphone audio (if you enable the visualizer's microphone mode or the dB meter) is analysed on the device and never leaves it. More in [Data sources & privacy](docs/data-sources.md).
 
 ## Customising the code
 

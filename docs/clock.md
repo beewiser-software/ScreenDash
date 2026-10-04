@@ -43,3 +43,19 @@ Notes:
 - iPadOS asks for microphone permission when you choose the mode. To avoid being asked on every reload, open the site's **aA → Website Settings** in Safari and set Microphone to *Allow*.
 - iOS requires a user tap before audio processing can start. If you reload with Microphone mode saved, a note says "Tap anywhere on the page to start listening" — the first touch starts it.
 - If the microphone is denied or unavailable, the bars fall back to Ambient and a note explains why.
+
+## Sound level (dB) meter
+
+A small readout beside the visualizer bars showing how loud the room is, with a word for the level:
+
+| Reading | Label |
+|---|---|
+| below 35 dB | Quiet |
+| 35 – 49 dB | Calm |
+| 50 – 64 dB | Moderate |
+| 65 – 79 dB | Loud (number turns accent-coloured) |
+| 80 dB and above | Very loud (number turns red) |
+
+Turn it on in Settings → Clock → *Sound level (dB) meter*. It uses the same microphone stream as the visualizer (and will request the microphone itself if the visualizer is in Ambient or Off mode), so the same permission notes apply. Audio is analysed on the device only.
+
+**About accuracy.** A browser can only measure the signal relative to the microphone's full scale (dBFS); it has no way to know the absolute sound pressure, so the number is an *estimate*. The app adds a fixed offset (default +94 dB, a typical value for tablet microphones with automatic gain control disabled) and smooths the result with a fast attack and slow release so peaks register without flicker. To make it agree with a real meter or a phone SPL app, use the **Calibration** stepper in Settings to nudge the offset up or down (±1 dB per tap, Reset returns to +94). Treat it as a relative indicator of quiet vs. loud rather than a certified measurement.

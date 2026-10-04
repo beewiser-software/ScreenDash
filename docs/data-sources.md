@@ -29,7 +29,7 @@ Every network feature degrades gracefully:
 ## Privacy
 
 - **Location:** browser geolocation is only requested if you haven't set a city manually. Coordinates go to Open-Meteo (weather) and BigDataCloud (place name). IP-based lookup sends your IP to GeoJS only as a fallback.
-- **Microphone:** used only if you choose the Microphone visualizer mode. Audio is analysed in the browser with the Web Audio API to drive the bars and is never recorded, stored or transmitted. The default Ambient mode doesn't touch the microphone.
+- **Microphone:** used only if you choose the Microphone visualizer mode or turn on the dB meter. Audio is analysed in the browser with the Web Audio API to drive the bars and the level reading, and is never recorded, stored or transmitted. The default Ambient mode doesn't touch the microphone.
 - **Storage:** themes, fonts, colours, world clocks and location are saved in the browser's `localStorage` on the device only.
 - **No analytics, cookies or tracking** of any kind.
 

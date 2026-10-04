@@ -14,6 +14,8 @@ Twenty swatches; tap one to apply it. See [Appearance](appearance.md).
 | Clock font | 10 styles | System |
 | World clocks | On / Off, plus three city pickers | On — New Delhi, London, Sydney |
 | Audio visualizer | Off / Ambient / Microphone | Ambient |
+| Sound level (dB) meter | On / Off | Off |
+| Calibration | −1 / +1 / Reset (offset applied to the dB reading) | +94 dB |
 
 See [Clock, world clocks & visualizer](clock.md).
 
@@ -48,6 +50,6 @@ See [Weather](weather.md).
 | `sd:theme` | Theme id |
 | `sd:hour12` | `true` for 12-hour |
 | `sd:location` | `{ lat, lon, name }` when a city was chosen manually |
-| `sd:custom` | Fonts, visualizer mode, world clocks, animated weather flag, per-widget colours |
+| `sd:custom` | Fonts, visualizer mode, dB meter and calibration, world clocks, animated weather flag, per-widget colours |
 
 Clearing the site's data in Safari (Settings → Safari → Advanced → Website Data) resets everything to defaults.

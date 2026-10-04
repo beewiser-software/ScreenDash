@@ -9,7 +9,7 @@
   <meta name="description" content="A calm always-on dashboard: clock, weather, word and quote of the day.">
   <title>ScreenDash</title>
   <!-- Bump ?v= on every deploy: iPad Safari caches assets aggressively, especially Home Screen web apps. -->
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 
@@ -28,6 +28,10 @@
           <div class="clock-sub-text">
             <div class="clock-day" id="clockDay">&nbsp;</div>
             <div class="clock-date" id="clockDate">&nbsp;</div>
+          </div>
+          <div class="db" id="db" aria-label="Room sound level" hidden>
+            <div class="db-val"><span id="dbNum">--</span><span class="db-unit">dB</span></div>
+            <div class="db-label" id="dbLabel">Mic needed</div>
           </div>
           <canvas class="viz" id="viz" aria-hidden="true" hidden></canvas>
         </div>
@@ -148,6 +152,22 @@
       <button type="button" data-viz="mic">Microphone</button>
     </div>
     <div class="note muted" id="vizNote" hidden></div>
+    <div class="row">
+      <span>Sound level (dB) meter</span>
+      <div class="seg" id="dbSeg">
+        <button type="button" data-on="1">On</button>
+        <button type="button" data-on="0">Off</button>
+      </div>
+    </div>
+    <div class="row" id="dbCalRow" hidden>
+      <span>Calibration <span class="muted">(match a reference meter)</span></span>
+      <div class="stepper">
+        <button type="button" class="btn" data-cal="-1" aria-label="Decrease offset">&minus;</button>
+        <span id="dbOffset">+94 dB</span>
+        <button type="button" class="btn" data-cal="1" aria-label="Increase offset">+</button>
+        <button type="button" class="btn" data-cal="reset">Reset</button>
+      </div>
+    </div>
 
     <h3>Font</h3>
     <div class="fonts" id="fontPick"></div>
@@ -182,7 +202,7 @@
     </p>
   </div>
 
-  <script src="data.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="data.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
