@@ -116,6 +116,7 @@
     font: saved.font || 'system',
     clockFont: saved.clockFont || 'system',
     weatherAnim: saved.weatherAnim !== false,
+    visualizer: saved.visualizer || 'ambient', // 'off' | 'ambient' | 'mic'
     cards: saved.cards || {} // key -> { bg: '#hex' | null, text: '#hex' | null }
   };
   function saveCustom() { store.set('custom', custom); }
@@ -854,6 +855,7 @@
       }
     });
     drawChart();
+    vizRefreshColors();
   }
 
   function applyFonts() {
@@ -874,6 +876,182 @@
       b.classList.toggle('active', b.getAttribute('data-theme-id') === id);
     });
     applyCardColors();
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Audio visualizer (Winamp-style segmented bars with falling peaks)      */
+  /* ---------------------------------------------------------------------- */
+  var viz = {
+    canvas: $('#viz'), ctx: null, raf: 0, last: 0,
+    levels: [], peaks: [], holds: [],
+    colors: { low: '#818cf8', mid: '#38bdf8', top: '#e2e8f0' },
+    audioCtx: null, analyser: null, stream: null, freq: null
+  };
+  var VIZ_FPS = 30, VIZ_SEG = 3, VIZ_SEG_GAP = 1, VIZ_BAR_GAP = 2;
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function vizNote(text) {
+    var el = $('#vizNote');
+    el.textContent = text || '';
+    el.hidden = !text;
+  }
+
+  function vizRefreshColors() {
+    var card = cardEl('clock');
+    viz.colors = {
+      low: cssVar('--tint', '#818cf8', card),
+      mid: cssVar('--accent2', '#38bdf8'),
+      top: cssVar('--text', '#e2e8f0', card)
+    };
+  }
+
+  // Simulated spectrum: slow swells plus a kick on the low bars and hi-hats on the high ones.
+  function ambientLevels(n, t) {
+    var bpm = 112, beat = (t * bpm / 60) % 1, eighth = (t * bpm / 30) % 1;
+    var kick = Math.pow(1 - beat, 5), hat = Math.pow(1 - eighth, 8);
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      var x = n > 1 ? i / (n - 1) : 0;
+      var swell = 0.32 + 0.3 * Math.sin(t * 0.9 + i * 0.7) * Math.sin(t * 0.41 + i * 0.23);
+      var low = Math.max(0, 1 - x * 2.2) * kick * 0.85;
+      var high = x > 0.5 ? (x - 0.5) * hat * 1.3 : 0;
+      var noise = (Math.random() - 0.5) * 0.22;
+      out.push(Math.max(0, Math.min(1, (swell + low + high + noise) * 1.2)));
+    }
+    return out;
+  }
+
+  // Group FFT bins into n log-spaced bars (≈40 Hz–12 kHz) and normalise to 0..1.
+  function micLevels(n) {
+    var an = viz.analyser;
+    an.getByteFrequencyData(viz.freq);
+    var nyquist = viz.audioCtx.sampleRate / 2, bins = viz.freq.length;
+    var fMin = 40, fMax = Math.min(12000, nyquist);
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      var f0 = fMin * Math.pow(fMax / fMin, i / n), f1 = fMin * Math.pow(fMax / fMin, (i + 1) / n);
+      var b0 = Math.floor(f0 / nyquist * bins), b1 = Math.max(b0 + 1, Math.floor(f1 / nyquist * bins));
+      var sum = 0, count = 0;
+      for (var b = b0; b < b1 && b < bins; b++) { sum += viz.freq[b]; count++; }
+      var v = count ? sum / count / 255 : 0;
+      out.push(Math.min(1, Math.pow(v, 1.4) * 1.35));
+    }
+    return out;
+  }
+
+  function vizFrame(ts) {
+    viz.raf = requestAnimationFrame(vizFrame);
+    if (ts - viz.last < 1000 / VIZ_FPS || document.hidden) return;
+    viz.last = ts;
+
+    var c = viz.canvas, W = c.clientWidth, H = c.clientHeight;
+    if (!W || !H) return;
+    var dpr = window.devicePixelRatio || 1;
+    if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) {
+      c.width = Math.round(W * dpr);
+      c.height = Math.round(H * dpr);
+    }
+    var ctx = viz.ctx || (viz.ctx = c.getContext('2d'));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    var n = Math.max(12, Math.min(48, Math.floor((W + VIZ_BAR_GAP) / (6 + VIZ_BAR_GAP))));
+    var barW = (W - VIZ_BAR_GAP * (n - 1)) / n;
+    var rows = Math.floor((H + VIZ_SEG_GAP) / (VIZ_SEG + VIZ_SEG_GAP));
+    if (viz.levels.length !== n) {
+      viz.levels = []; viz.peaks = []; viz.holds = [];
+      for (var k = 0; k < n; k++) { viz.levels.push(0); viz.peaks.push(0); viz.holds.push(0); }
+    }
+
+    var target = (custom.visualizer === 'mic' && viz.analyser) ? micLevels(n) : ambientLevels(n, ts / 1000);
+    for (var i = 0; i < n; i++) {
+      // Fast attack, slower release, like a real meter.
+      var cur = viz.levels[i], t = target[i];
+      viz.levels[i] = t > cur ? cur + (t - cur) * 0.6 : cur + (t - cur) * 0.25;
+      var lit = Math.round(viz.levels[i] * rows);
+      var x = i * (barW + VIZ_BAR_GAP);
+      for (var r = 0; r < lit; r++) {
+        var f = r / rows;
+        ctx.fillStyle = f < 0.6 ? viz.colors.low : f < 0.85 ? viz.colors.mid : viz.colors.top;
+        ctx.globalAlpha = 0.55 + 0.45 * f;
+        ctx.fillRect(x, H - (r + 1) * (VIZ_SEG + VIZ_SEG_GAP) + VIZ_SEG_GAP, barW, VIZ_SEG);
+      }
+      // Peak cap: hold briefly, then fall.
+      if (lit >= viz.peaks[i]) { viz.peaks[i] = lit; viz.holds[i] = 10; }
+      else if (viz.holds[i] > 0) viz.holds[i]--;
+      else viz.peaks[i] = Math.max(0, viz.peaks[i] - 0.35);
+      var pr = Math.round(viz.peaks[i]);
+      if (pr > 0 && pr >= lit) {
+        ctx.fillStyle = viz.colors.top;
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect(x, H - pr * (VIZ_SEG + VIZ_SEG_GAP) + VIZ_SEG_GAP, barW, VIZ_SEG);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function resumeAudioOnGesture() {
+    function once() {
+      if (viz.audioCtx && viz.audioCtx.state === 'suspended') viz.audioCtx.resume();
+      vizNote('');
+      document.removeEventListener('touchend', once);
+      document.removeEventListener('click', once);
+    }
+    document.addEventListener('touchend', once);
+    document.addEventListener('click', once);
+  }
+
+  function startMic() {
+    if (viz.analyser) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      vizNote('Microphone input is not supported here; showing ambient bars.');
+      return;
+    }
+    // Create the context synchronously so a tap in Settings counts as the user gesture iOS requires.
+    if (!viz.audioCtx) viz.audioCtx = new AC();
+    vizNote('Requesting microphone…');
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+      .then(function (stream) {
+        if (custom.visualizer !== 'mic' || !viz.audioCtx) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+        viz.stream = stream;
+        viz.analyser = viz.audioCtx.createAnalyser();
+        viz.analyser.fftSize = 512;
+        viz.analyser.smoothingTimeConstant = 0.75;
+        viz.audioCtx.createMediaStreamSource(stream).connect(viz.analyser);
+        viz.freq = new Uint8Array(viz.analyser.frequencyBinCount);
+        if (viz.audioCtx.state === 'suspended') { vizNote('Tap anywhere on the page to start listening.'); resumeAudioOnGesture(); }
+        else vizNote('');
+      })
+      .catch(function () {
+        vizNote('Microphone unavailable or denied; showing ambient bars instead.');
+      });
+  }
+
+  function stopMic() {
+    if (viz.stream) viz.stream.getTracks().forEach(function (t) { t.stop(); });
+    if (viz.audioCtx && viz.audioCtx.close) viz.audioCtx.close();
+    viz.stream = null; viz.audioCtx = null; viz.analyser = null; viz.freq = null;
+  }
+
+  function applyVisualizer() {
+    var mode = custom.visualizer;
+    $all('#vizSeg button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-viz') === mode); });
+    cancelAnimationFrame(viz.raf);
+    viz.raf = 0;
+    if (mode !== 'mic') stopMic();
+    if (mode === 'off' || (mode === 'ambient' && reducedMotion)) {
+      viz.canvas.hidden = true;
+      vizNote(mode === 'ambient' ? 'Ambient animation is paused because Reduce Motion is on.' : '');
+      layout();
+      return;
+    }
+    viz.canvas.hidden = false;
+    vizNote('');
+    vizRefreshColors();
+    if (mode === 'mic') startMic();
+    viz.raf = requestAnimationFrame(vizFrame);
+    layout();
   }
 
   /* ---------------------------------------------------------------------- */
@@ -995,6 +1173,13 @@
       var b = closestAttr(e.target, this, 'data-font');
       if (b) { custom.clockFont = b.getAttribute('data-font'); saveCustom(); applyFonts(); }
     });
+    $('#vizSeg').addEventListener('click', function (e) {
+      var b = closestAttr(e.target, this, 'data-viz');
+      if (!b) return;
+      custom.visualizer = b.getAttribute('data-viz');
+      saveCustom();
+      applyVisualizer();
+    });
 
     // Widget colours
     $('#widgetPick').innerHTML = window.SD_CARDS.map(function (c) {
@@ -1111,6 +1296,7 @@
     applyTheme(settings.theme, false);
     startClock();
     layout();
+    applyVisualizer();
 
     refreshWeather();
     loadWord();

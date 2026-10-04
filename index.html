@@ -21,8 +21,11 @@
           <span class="clock-side"><span id="clockAmPm"></span><span id="clockSec">--</span></span>
         </div>
         <div class="clock-sub">
-          <div class="clock-day" id="clockDay">&nbsp;</div>
-          <div class="clock-date" id="clockDate">&nbsp;</div>
+          <div class="clock-sub-text">
+            <div class="clock-day" id="clockDay">&nbsp;</div>
+            <div class="clock-date" id="clockDate">&nbsp;</div>
+          </div>
+          <canvas class="viz" id="viz" aria-hidden="true" hidden></canvas>
         </div>
       </div>
     </section>
@@ -126,6 +129,13 @@
     </div>
     <div class="sub">Clock font</div>
     <div class="fonts" id="clockFontPick"></div>
+    <div class="sub">Audio visualizer</div>
+    <div class="seg" id="vizSeg">
+      <button type="button" data-viz="off">Off</button>
+      <button type="button" data-viz="ambient">Ambient</button>
+      <button type="button" data-viz="mic">Microphone</button>
+    </div>
+    <div class="note muted" id="vizNote" hidden></div>
 
     <h3>Font</h3>
     <div class="fonts" id="fontPick"></div>
