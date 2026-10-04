@@ -117,6 +117,9 @@
     clockFont: saved.clockFont || 'system',
     weatherAnim: saved.weatherAnim !== false,
     visualizer: saved.visualizer || 'ambient', // 'off' | 'ambient' | 'mic'
+    world: saved.world || { on: true, zones: [
+      { name: 'New Delhi', tz: 'Asia/Kolkata' }, { name: 'London', tz: 'Europe/London' }, { name: 'Sydney', tz: 'Australia/Sydney' }
+    ] },
     cards: saved.cards || {} // key -> { bg: '#hex' | null, text: '#hex' | null }
   };
   function saveCustom() { store.set('custom', custom); }
@@ -303,6 +306,7 @@
     elSec.textContent = pad2(s);
     elDay.textContent = DAYS[d.getDay()];
     elDate.textContent = d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+    if (m !== lastWorldMinute) { lastWorldMinute = m; renderWorld(d); }
 
     var key = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
     if (lastDateKey && key !== lastDateKey) onNewDay();
@@ -327,6 +331,67 @@
     loadWord();
     loadQuote();
     refreshWeather();
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* World clocks (Intl.DateTimeFormat does the zone math)                  */
+  /* ---------------------------------------------------------------------- */
+  var worldFmts = null, lastWorldMinute = -1;
+  var hasIntlTz = (function () {
+    try { new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata' }); return true; } catch (e) { return false; }
+  })();
+
+  function dateKey(fmt, now) {
+    var y = 0, mo = 0, da = 0;
+    fmt.formatToParts(now).forEach(function (p) {
+      if (p.type === 'year') y = +p.value; else if (p.type === 'month') mo = +p.value; else if (p.type === 'day') da = +p.value;
+    });
+    return y * 10000 + mo * 100 + da;
+  }
+
+  function buildWorldFormatters() {
+    worldFmts = [];
+    if (!hasIntlTz) return;
+    var timeOpts = settings.hour12
+      ? { hour: 'numeric', minute: '2-digit', hour12: true }
+      : { hour: '2-digit', minute: '2-digit', hour12: false };
+    var locale = settings.hour12 ? 'en-US' : 'en-GB';
+    custom.world.zones.forEach(function (z) {
+      if (!z || !z.tz) return;
+      try {
+        var t = {}; for (var k in timeOpts) t[k] = timeOpts[k]; t.timeZone = z.tz;
+        worldFmts.push({
+          name: z.name,
+          time: new Intl.DateTimeFormat(locale, t),
+          date: new Intl.DateTimeFormat('en-US', { timeZone: z.tz, year: 'numeric', month: 'numeric', day: 'numeric' })
+        });
+      } catch (e) { /* unknown zone on this device; skip it */ }
+    });
+    worldFmts.local = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'numeric', day: 'numeric' });
+  }
+
+  function renderWorld(now) {
+    var el = $('#world');
+    if (!custom.world.on || !worldFmts || !worldFmts.length) { el.hidden = true; return; }
+    var local = dateKey(worldFmts.local, now);
+    el.innerHTML = worldFmts.map(function (f) {
+      var k = dateKey(f.date, now);
+      var diff = k > local ? '+1' : k < local ? '−1' : '';
+      return '<div class="wt"><span class="wt-city">' + esc(f.name) + '</span><span class="wt-time">' + esc(f.time.format(now)) +
+        (diff ? '<sup class="wt-day">' + diff + '</sup>' : '') + '</span></div>';
+    }).join('');
+    el.hidden = false;
+  }
+
+  function applyWorld() {
+    buildWorldFormatters();
+    var show = custom.world.on && worldFmts.length > 0;
+    cardEl('clock').classList.toggle('has-world', show);
+    $all('#worldSeg button').forEach(function (b) { b.classList.toggle('active', (b.getAttribute('data-on') === '1') === custom.world.on); });
+    $('#worldPicks').hidden = !custom.world.on;
+    lastWorldMinute = -1;
+    renderWorld(new Date());
+    layout();
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1086,6 +1151,8 @@
     $all('#hourSeg button').forEach(function (b) {
       b.classList.toggle('active', (b.getAttribute('data-h12') === '1') === v);
     });
+    buildWorldFormatters();
+    lastWorldMinute = -1;
     tickClock();
     renderWeather();
   }
@@ -1178,6 +1245,33 @@
       custom.visualizer = b.getAttribute('data-viz');
       saveCustom();
       applyVisualizer();
+    });
+
+    // World clocks: three city pickers ("None" leaves a slot empty)
+    var cityOptions = '<option value="">None</option>' + window.SD_CITIES.map(function (g) {
+      return '<optgroup label="' + esc(g.group) + '">' + g.items.map(function (c) {
+        return '<option value="' + esc(c[1] + '|' + c[0]) + '">' + esc(c[0]) + '</option>';
+      }).join('') + '</optgroup>';
+    }).join('');
+    $('#worldPicks').innerHTML = [0, 1, 2].map(function (i) {
+      return '<select class="input" data-slot="' + i + '" aria-label="World clock ' + (i + 1) + '">' + cityOptions + '</select>';
+    }).join('');
+    $all('#worldPicks select').forEach(function (sel, i) {
+      var z = custom.world.zones[i];
+      sel.value = z && z.tz ? z.tz + '|' + z.name : '';
+      sel.addEventListener('change', function () {
+        var v = sel.value.split('|');
+        custom.world.zones[i] = sel.value ? { tz: v[0], name: v[1] } : null;
+        saveCustom();
+        applyWorld();
+      });
+    });
+    $('#worldSeg').addEventListener('click', function (e) {
+      var b = closestAttr(e.target, this, 'data-on');
+      if (!b) return;
+      custom.world.on = b.getAttribute('data-on') === '1';
+      saveCustom();
+      applyWorld();
     });
 
     // Widget colours
@@ -1293,6 +1387,7 @@
     buildPanel();
     applyFonts();
     applyTheme(settings.theme, false);
+    applyWorld();
     startClock();
     layout();
     applyVisualizer();

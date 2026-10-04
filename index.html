@@ -9,7 +9,7 @@
   <meta name="description" content="A calm always-on dashboard: clock, weather, word and quote of the day.">
   <title>ScreenDash</title>
   <!-- Bump ?v= on every deploy: iPad Safari caches assets aggressively, especially Home Screen web apps. -->
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
@@ -17,9 +17,12 @@
 
     <section class="card card-clock" data-span="2" aria-label="Clock">
       <div class="clock">
-        <div class="clock-time">
-          <span class="clock-hm" id="clockHM">--:--</span>
-          <span class="clock-side"><span id="clockAmPm"></span><span id="clockSec">--</span></span>
+        <div class="clock-top">
+          <div class="clock-time">
+            <span class="clock-hm" id="clockHM">--:--</span>
+            <span class="clock-side"><span id="clockAmPm"></span><span id="clockSec">--</span></span>
+          </div>
+          <div class="world" id="world" aria-label="World clocks" hidden></div>
         </div>
         <div class="clock-sub">
           <div class="clock-sub-text">
@@ -130,6 +133,14 @@
     </div>
     <div class="sub">Clock font</div>
     <div class="fonts" id="clockFontPick"></div>
+    <div class="row">
+      <span>World clocks</span>
+      <div class="seg" id="worldSeg">
+        <button type="button" data-on="1">On</button>
+        <button type="button" data-on="0">Off</button>
+      </div>
+    </div>
+    <div class="world-picks" id="worldPicks"></div>
     <div class="sub">Audio visualizer</div>
     <div class="seg" id="vizSeg">
       <button type="button" data-viz="off">Off</button>
@@ -171,7 +182,7 @@
     </p>
   </div>
 
-  <script src="data.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="data.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

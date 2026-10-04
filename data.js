@@ -49,6 +49,38 @@ window.SD_FONTS = [
   { id: 'mono', name: 'Mono', stack: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace' }
 ];
 
+/* Cities offered for the world clocks, grouped for the picker. IANA zone ids are resolved by Intl.DateTimeFormat. */
+window.SD_CITIES = [
+  { group: 'Americas', items: [
+    ['Honolulu', 'Pacific/Honolulu'], ['Anchorage', 'America/Anchorage'], ['Los Angeles', 'America/Los_Angeles'],
+    ['Vancouver', 'America/Vancouver'], ['Denver', 'America/Denver'], ['Chicago', 'America/Chicago'],
+    ['Mexico City', 'America/Mexico_City'], ['New York', 'America/New_York'], ['Toronto', 'America/Toronto'],
+    ['Bogotá', 'America/Bogota'], ['Lima', 'America/Lima'], ['Santiago', 'America/Santiago'],
+    ['São Paulo', 'America/Sao_Paulo'], ['Buenos Aires', 'America/Argentina/Buenos_Aires']
+  ] },
+  { group: 'Europe', items: [
+    ['London', 'Europe/London'], ['Dublin', 'Europe/Dublin'], ['Lisbon', 'Europe/Lisbon'], ['Paris', 'Europe/Paris'],
+    ['Amsterdam', 'Europe/Amsterdam'], ['Berlin', 'Europe/Berlin'], ['Madrid', 'Europe/Madrid'], ['Rome', 'Europe/Rome'],
+    ['Zurich', 'Europe/Zurich'], ['Stockholm', 'Europe/Stockholm'], ['Warsaw', 'Europe/Warsaw'], ['Athens', 'Europe/Athens'],
+    ['Kyiv', 'Europe/Kyiv'], ['Istanbul', 'Europe/Istanbul'], ['Moscow', 'Europe/Moscow']
+  ] },
+  { group: 'Africa & Middle East', items: [
+    ['Lagos', 'Africa/Lagos'], ['Cairo', 'Africa/Cairo'], ['Johannesburg', 'Africa/Johannesburg'], ['Nairobi', 'Africa/Nairobi'],
+    ['Tel Aviv', 'Asia/Jerusalem'], ['Riyadh', 'Asia/Riyadh'], ['Dubai', 'Asia/Dubai'], ['Tehran', 'Asia/Tehran']
+  ] },
+  { group: 'Asia', items: [
+    ['Karachi', 'Asia/Karachi'], ['New Delhi', 'Asia/Kolkata'], ['Mumbai', 'Asia/Kolkata'], ['Kathmandu', 'Asia/Kathmandu'],
+    ['Dhaka', 'Asia/Dhaka'], ['Bangkok', 'Asia/Bangkok'], ['Jakarta', 'Asia/Jakarta'], ['Singapore', 'Asia/Singapore'],
+    ['Kuala Lumpur', 'Asia/Kuala_Lumpur'], ['Hong Kong', 'Asia/Hong_Kong'], ['Shanghai', 'Asia/Shanghai'], ['Beijing', 'Asia/Shanghai'],
+    ['Taipei', 'Asia/Taipei'], ['Manila', 'Asia/Manila'], ['Seoul', 'Asia/Seoul'], ['Tokyo', 'Asia/Tokyo']
+  ] },
+  { group: 'Oceania', items: [
+    ['Perth', 'Australia/Perth'], ['Adelaide', 'Australia/Adelaide'], ['Brisbane', 'Australia/Brisbane'],
+    ['Sydney', 'Australia/Sydney'], ['Melbourne', 'Australia/Melbourne'], ['Auckland', 'Pacific/Auckland']
+  ] },
+  { group: 'Other', items: [['UTC', 'UTC']] }
+];
+
 /* Colour choices offered for widget backgrounds and text. */
 window.SD_BG_PALETTE = [
   '#0f172a', '#1f2937', '#111111', '#374151', '#4f46e5', '#2563eb', '#0ea5e9', '#0d9488',

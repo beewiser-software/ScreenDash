@@ -176,6 +176,14 @@ button { font-family: inherit; }
   height: 100%;
   font-family: var(--font-clock);
 }
+.clock-top {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: space-between;
+  justify-content: space-between;
+}
 .clock-time {
   display: -webkit-flex;
   display: flex;
@@ -213,6 +221,28 @@ button { font-family: inherit; }
   justify-content: space-between;
   margin-top: 14px;
 }
+
+/* World clocks: a compact column to the right of the main time */
+.world {
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+  min-width: 128px;
+  margin-left: 18px;
+}
+.wt {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: baseline;
+  align-items: baseline;
+  -webkit-justify-content: space-between;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--tint-line);
+}
+.wt:last-child { border-bottom: 0; }
+.wt-city { margin-right: 12px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.wt-time { font-size: 1rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; -webkit-font-feature-settings: "tnum"; font-feature-settings: "tnum"; }
+.wt-day { margin-left: 3px; font-size: 0.6rem; font-weight: 700; color: var(--tint); vertical-align: super; }
 .clock-sub-text { -webkit-flex-shrink: 0; flex-shrink: 0; min-width: 0; }
 .clock-day { font-size: 1.6rem; font-weight: 600; letter-spacing: -0.01em; }
 .clock-date { margin-top: 2px; font-size: 1.1rem; color: var(--muted); }
@@ -743,6 +773,15 @@ button { font-family: inherit; }
   appearance: none;
 }
 .input:focus { border-color: var(--accent); }
+.world-picks { margin-top: 8px; }
+.world-picks select { margin-bottom: 8px; }
+select.input {
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+}
 .loc-current { margin-bottom: 10px; font-size: 0.9rem; color: var(--muted); }
 .results { margin: 6px 0 10px; }
 .results button {
@@ -829,6 +868,8 @@ button { font-family: inherit; }
 @media (max-width: 599px) {
   .card { padding: 18px; }
   .viz { height: 44px; margin-left: 14px; }
+  .card-clock.has-world .clock-time { font-size: 14vw; }
+  .world { min-width: 112px; margin-left: 12px; }
   .forecast { -webkit-flex-direction: column; flex-direction: column; margin: 0; }
   .fc {
     display: -webkit-flex;
@@ -847,10 +888,12 @@ button { font-family: inherit; }
 @media (min-width: 600px) {
   .card-clock { min-height: 200px; }
   .clock-time { font-size: 7.5rem; }
+  .card-clock.has-world .clock-time { font-size: 7rem; }
 }
 @media (min-width: 900px) {
   .card-clock { min-height: 240px; }
   .clock-time { font-size: 8.5rem; }
+  .card-clock.has-world .clock-time { font-size: 7.5rem; }
   .clock-day { font-size: 1.9rem; }
   .clock-date { font-size: 1.2rem; }
   .viz { height: 64px; }
@@ -858,14 +901,17 @@ button { font-family: inherit; }
 /* 4 columns: the clock holds half the width, so ease the type size back slightly */
 @media (min-width: 1024px) {
   .clock-time { font-size: 8rem; }
+  .card-clock.has-world .clock-time { font-size: 6.8rem; }
 }
 @media (min-width: 1280px) {
   .card-clock { min-height: 290px; }
   .clock-time { font-size: 9.5rem; }
+  .card-clock.has-world .clock-time { font-size: 8.5rem; }
   .now-temp { font-size: 5rem; }
   #feelsChart { height: 210px; }
 }
 @media (min-width: 1600px) {
   .card-clock { min-height: 320px; }
   .clock-time { font-size: 11rem; }
+  .card-clock.has-world .clock-time { font-size: 10rem; }
 }
