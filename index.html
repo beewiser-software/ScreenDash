@@ -72,16 +72,19 @@
       </div>
     </section>
 
-    <section class="card card-word" data-span="1" aria-label="Word of the day">
+    <section class="card card-word" data-span="1" data-stretch="word" tabindex="0" aria-label="Word of the day (tap for details)">
       <div class="card-label" data-icon="book">Word of the day</div>
-      <div id="wordBody"><div class="muted">Loading…</div></div>
+      <div class="card-body" id="wordBody"><div class="muted">Loading…</div></div>
+      <div class="more-hint" hidden>Tap for more</div>
     </section>
 
-    <section class="card card-quote" data-span="1" aria-label="Quote of the day">
+    <section class="card card-quote" data-span="1" data-stretch="quote" tabindex="0" aria-label="Quote of the day (tap for details)">
       <div class="card-label" data-icon="quote">Quote of the day</div>
-      <div class="quote-mark" aria-hidden="true">“</div>
-      <blockquote class="quote-text" id="quoteText">Loading…</blockquote>
-      <div class="quote-author" id="quoteAuthor"></div>
+      <div class="card-body" id="quoteBody">
+        <div class="quote-mark" aria-hidden="true">“</div>
+        <blockquote class="quote-text">Loading…</blockquote>
+      </div>
+      <div class="more-hint" hidden>Tap for more</div>
     </section>
 
     <section class="card card-forecast" data-span="2" data-span-wide="4" aria-label="7-day forecast">
@@ -96,6 +99,16 @@
 
   <button id="settingsBtn" class="fab" type="button" aria-label="Open settings" data-icon="sliders"></button>
   <div id="backdrop" class="backdrop" hidden></div>
+
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalLabel" hidden>
+    <div class="modal-card" id="modalCard">
+      <div class="card-head">
+        <div class="card-label" id="modalLabel"></div>
+        <button id="modalClose" class="icon-btn" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
 
   <div id="panel" class="panel" role="dialog" aria-label="Settings" hidden>
     <div class="panel-head">

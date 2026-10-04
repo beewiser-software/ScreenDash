@@ -472,27 +472,96 @@ button { font-family: inherit; }
 .fc-lo { margin-left: 6px; font-size: 0.95rem; color: var(--muted); }
 
 /* ---------- Word ---------- */
-.word { font-size: 2.2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; text-transform: capitalize; word-wrap: break-word; }
-.word.word-md { font-size: 1.8rem; }
-.word.word-sm { font-size: 1.5rem; }
+/* Word/quote type sizes scale with --fit, which app.js lowers when text would overflow a fixed-height card. */
+.word { font-size: calc(2.2rem * var(--fit, 1)); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; text-transform: capitalize; word-wrap: break-word; }
+.word.word-md { font-size: calc(1.8rem * var(--fit, 1)); }
+.word.word-sm { font-size: calc(1.5rem * var(--fit, 1)); }
 .word-phon {
   display: -webkit-flex;
   display: flex;
   -webkit-align-items: center;
   align-items: center;
   margin-top: 6px;
-  font-size: 1rem;
+  font-size: calc(1rem * var(--fit, 1));
   color: var(--muted);
 }
-.word-pos { margin-top: 14px; font-size: 0.9rem; font-style: italic; color: var(--tint); }
-.word-def { margin-top: 4px; line-height: 1.45; }
-.word-ex { margin-top: 6px; font-size: 0.95rem; font-style: italic; line-height: 1.4; color: var(--muted); }
+.word-pos { margin-top: 14px; font-size: calc(0.9rem * var(--fit, 1)); font-style: italic; color: var(--tint); }
+.word-def { margin-top: 4px; font-size: calc(1rem * var(--fit, 1)); line-height: 1.45; }
+.word-ex { margin-top: 6px; font-size: calc(0.95rem * var(--fit, 1)); font-style: italic; line-height: 1.4; color: var(--muted); }
 
 /* ---------- Quote ---------- */
-.quote-mark { margin-top: 2px; font-family: Georgia, "Times New Roman", serif; font-size: 3.2rem; line-height: 0.6; color: var(--tint); }
-.quote-text { margin: 10px 0 0; font-size: 1.25rem; font-weight: 500; line-height: 1.45; }
-.quote-text.quote-long { font-size: 1.05rem; line-height: 1.5; }
-.quote-author { margin-top: 12px; font-size: 0.95rem; color: var(--muted); }
+.quote-mark { margin-top: 2px; font-family: Georgia, "Times New Roman", serif; font-size: calc(3.2rem * var(--fit, 1)); line-height: 0.6; color: var(--tint); }
+.quote-text { margin: 10px 0 0; font-size: calc(1.25rem * var(--fit, 1)); font-weight: 500; line-height: 1.45; }
+.quote-text.quote-long { font-size: calc(1.05rem * var(--fit, 1)); line-height: 1.5; }
+.quote-author { margin-top: 12px; font-size: calc(0.95rem * var(--fit, 1)); color: var(--muted); }
+
+/* ---------- Stretchable cards (fixed height, tap for full content) ---------- */
+.card[data-stretch] {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  cursor: pointer;
+}
+.card[data-stretch]:focus { outline: none; }
+.card[data-stretch]:focus-visible { box-shadow: 0 0 0 2px var(--tint); }
+.card[data-stretch] .card-label { -webkit-flex-shrink: 0; flex-shrink: 0; }
+.card-body {
+  position: relative;
+  -webkit-flex: 1 1 auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.card.clipped .card-body {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), rgba(0, 0, 0, 0));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), rgba(0, 0, 0, 0));
+}
+.more-hint {
+  position: absolute;
+  right: 20px; bottom: 14px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tint);
+}
+/* Tighter rhythm inside fixed-height cards; the modal keeps the roomier defaults. */
+.card-body .quote-mark { margin-top: 0; font-size: calc(2.4rem * var(--fit, 1)); line-height: 0.55; }
+.card-body .quote-text { margin-top: 6px; }
+.card-body .quote-author { margin-top: 8px; }
+.card-body .word-pos { margin-top: 10px; }
+
+/* ---------- Detail modal ---------- */
+.modal {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 50;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  padding: 24px;
+}
+.modal-card {
+  --fit: 1.15;
+  width: 100%;
+  max-width: 640px;
+  max-height: 85%;
+  padding: 24px 26px 26px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--tint-line);
+  border-radius: 24px;
+  background-color: var(--bg0);
+  background-image: linear-gradient(150deg, var(--tint-a), var(--tint-b));
+  color: var(--text);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+.modal-card .card-head { margin-bottom: 16px; }
+.modal-body .word-pos:first-of-type { margin-top: 18px; }
 
 /* ---------- Buttons ---------- */
 .icon-btn {

@@ -175,6 +175,10 @@
   var grid = $('#grid');
   var cards = $all('.card', grid);
   var lastChartWidth = 0;
+  // Stretchable cards (word, quote) use a fixed height in multi-column layouts so the
+  // full-width forecast beneath them always starts flush and stays on screen.
+  var STRETCH_PREF = 260, STRETCH_MIN = 150;
+  var FIT_STEPS = [1, 0.92, 0.85, 0.78];
 
   // Keep in sync with the breakpoints in styles.css.
   function columnsFor(viewportWidth) {
@@ -189,13 +193,37 @@
     if (!width) return;
     var cols = columnsFor(window.innerWidth);
     var colW = (width - GAP * (cols - 1)) / cols;
-    var heights = [];
-    for (var i = 0; i < cols; i++) heights.push(0);
+    var heights = [], bottomCard = [];
+    for (var i = 0; i < cols; i++) { heights.push(0); bottomCard.push(null); }
+
+    // Resize stretchable cards at the bottom of their columns so every column ends at the
+    // same y as the tallest fixed card (e.g. the chart). Called before placing a full-width card.
+    function equalize() {
+      var anchor = 0, anchored = false, k;
+      for (k = 0; k < cols; k++) {
+        if (bottomCard[k] && !bottomCard[k].stretch) { anchor = Math.max(anchor, heights[k]); anchored = true; }
+      }
+      if (!anchored) {
+        for (k = 0; k < cols; k++) if (bottomCard[k]) anchor = Math.max(anchor, bottomCard[k].top + STRETCH_PREF + GAP);
+      }
+      for (k = 0; k < cols; k++) {
+        var p = bottomCard[k];
+        if (!p || !p.stretch || p.done) continue;
+        p.done = true;
+        var h = Math.max(STRETCH_MIN, anchor - GAP - p.top);
+        p.card.style.height = h + 'px';
+        for (var c = p.col; c < p.col + p.span; c++) heights[c] = p.top + h + GAP;
+      }
+    }
 
     cards.forEach(function (card) {
       var wanted = (cols >= 4 && card.getAttribute('data-span-wide')) || card.getAttribute('data-span');
       var span = Math.min(parseInt(wanted, 10) || 1, cols);
+      var stretch = cols > 1 && card.hasAttribute('data-stretch');
+      if (span === cols && cols > 1) equalize();
+
       card.style.width = Math.floor(colW * span + GAP * (span - 1)) + 'px';
+      card.style.height = stretch ? STRETCH_PREF + 'px' : '';
 
       // Pick the column window whose tallest column is lowest; ties go left.
       var best = 0, bestH = Infinity;
@@ -211,7 +239,11 @@
       card.style.transform = t;
 
       var cardH = card.offsetHeight;
-      for (var k2 = best; k2 < best + span; k2++) heights[k2] = y + cardH + GAP;
+      var placed = { card: card, top: y, col: best, span: span, stretch: stretch };
+      for (var k2 = best; k2 < best + span; k2++) {
+        heights[k2] = y + cardH + GAP;
+        bottomCard[k2] = placed;
+      }
     });
 
     var total = 0;
@@ -223,8 +255,30 @@
       setTimeout(function () { grid.classList.add('ready'); }, 30);
     }
 
+    fitStretchCards();
     var canvas = $('#feelsChart');
     if (canvas && canvas.clientWidth !== lastChartWidth) drawChart();
+  }
+
+  // Shrink type in fixed-height cards step by step; if it still overflows, fade it and offer the modal.
+  function fitStretchCards() {
+    $all('.card[data-stretch]', grid).forEach(function (card) {
+      var body = $('.card-body', card), hint = $('.more-hint', card);
+      if (!body) return;
+      hint.hidden = true;
+      card.classList.remove('clipped');
+      if (!card.style.height) { body.style.removeProperty('--fit'); return; }
+      var i = 0;
+      body.style.setProperty('--fit', FIT_STEPS[0]);
+      while (body.scrollHeight > body.clientHeight + 1 && i < FIT_STEPS.length - 1) {
+        i++;
+        body.style.setProperty('--fit', FIT_STEPS[i]);
+      }
+      if (body.scrollHeight > body.clientHeight + 1) {
+        card.classList.add('clipped');
+        hint.hidden = false;
+      }
+    });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -635,13 +689,15 @@
         var parts = d.split('\t');
         var pos = DATAMUSE_POS.hasOwnProperty(parts[0]) ? DATAMUSE_POS[parts[0]] : parts[0];
         var text = (parts.length > 1 ? parts[1] : parts[0]).trim();
-        if (!text || seen[pos] || meanings.length >= 2) return;
+        if (!text || seen[pos] || meanings.length >= 4) return;
         seen[pos] = true;
         meanings.push({ pos: pos, definition: text, example: '' });
       });
       return { word: e.word, phonetic: phon, audio: '', meanings: meanings };
     });
   }
+
+  var lastWord = null, lastQuote = null;
 
   function loadWord(attempt) {
     attempt = attempt || 0;
@@ -654,32 +710,37 @@
       .then(renderWord)
       .catch(function () {
         if (attempt < 2) return loadWord(attempt + 1);
+        lastWord = null;
         $('#wordBody').innerHTML = '<div class="word">' + esc(word) + '</div>' +
           '<div class="word-def muted">Definition unavailable right now.</div>';
         layout();
       });
   }
 
-  function renderWord(entry) {
+  // Compact: first sense (+ example, or a short second sense). Full: up to four senses with examples.
+  function wordHTML(entry, full) {
     var canSpeak = !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
     var sizeCls = entry.word.length > 12 ? ' word-sm' : entry.word.length > 9 ? ' word-md' : '';
-
     var html = '<div class="word' + sizeCls + '">' + esc(entry.word) + '</div>' +
       '<div class="word-phon"><span>' + esc(entry.phonetic) + '</span>' +
-      ((entry.audio || canSpeak) ? '<button type="button" class="icon-btn" id="wordAudio" aria-label="Pronounce ' + esc(entry.word) + '">' + svgIcon('speaker') + '</button>' : '') +
+      ((entry.audio || canSpeak)
+        ? '<button type="button" class="icon-btn say-btn" data-word="' + esc(entry.word) + '" data-audio="' + esc(entry.audio) +
+          '" aria-label="Pronounce ' + esc(entry.word) + '">' + svgIcon('speaker') + '</button>'
+        : '') +
       '</div>';
-    // First sense with its example; a second sense only when the first is short and has no example.
     var first = entry.meanings[0], second = entry.meanings[1];
-    html += '<div class="word-pos">' + esc(first.pos) + '</div><div class="word-def">' + esc(first.definition) + '</div>';
-    if (first.example) {
-      html += '<div class="word-ex">“' + esc(first.example) + '”</div>';
-    } else if (second && first.definition.length < 90 && second.definition.length < 120) {
-      html += '<div class="word-pos">' + esc(second.pos) + '</div><div class="word-def">' + esc(second.definition) + '</div>';
-    }
-    $('#wordBody').innerHTML = html;
+    var senses = full ? entry.meanings.slice(0, 4) : [first];
+    if (!full && !first.example && second && first.definition.length < 90 && second.definition.length < 120) senses.push(second);
+    senses.forEach(function (m) {
+      html += '<div class="word-pos">' + esc(m.pos) + '</div><div class="word-def">' + esc(m.definition) + '</div>';
+      if (m.example) html += '<div class="word-ex">“' + esc(m.example) + '”</div>';
+    });
+    return html;
+  }
 
-    var btn = $('#wordAudio');
-    if (btn) btn.addEventListener('click', function () { pronounce(entry.word, entry.audio); });
+  function renderWord(entry) {
+    lastWord = entry;
+    $('#wordBody').innerHTML = wordHTML(entry, false);
     layout();
   }
 
@@ -702,11 +763,14 @@
   /* ---------------------------------------------------------------------- */
   /* Quote of the day                                                       */
   /* ---------------------------------------------------------------------- */
+  function quoteHTML(text, author) {
+    return '<div class="quote-mark" aria-hidden="true">“</div>' +
+      '<blockquote class="quote-text' + (text.length > 140 ? ' quote-long' : '') + '">' + esc(text) + '</blockquote>' +
+      (author ? '<div class="quote-author">— ' + esc(author) + '</div>' : '');
+  }
   function renderQuote(text, author) {
-    var el = $('#quoteText');
-    el.textContent = text;
-    el.className = 'quote-text' + (text.length > 140 ? ' quote-long' : '');
-    $('#quoteAuthor').textContent = author ? '— ' + author : '';
+    lastQuote = { text: text, author: author };
+    $('#quoteBody').innerHTML = quoteHTML(text, author);
     layout();
   }
   function loadQuote(attempt) {
@@ -813,12 +877,31 @@
   }
 
   /* ---------------------------------------------------------------------- */
-  /* Settings panel                                                         */
+  /* Settings panel & detail modal                                          */
   /* ---------------------------------------------------------------------- */
-  var panel = $('#panel'), backdrop = $('#backdrop');
+  var panel = $('#panel'), backdrop = $('#backdrop'), modal = $('#modal');
 
-  function openPanel() { panel.hidden = false; backdrop.hidden = false; }
+  function openPanel() { modal.hidden = true; panel.hidden = false; backdrop.hidden = false; }
   function closePanel() { panel.hidden = true; backdrop.hidden = true; }
+  function closeOverlays() { panel.hidden = true; modal.hidden = true; backdrop.hidden = true; }
+
+  // Full word/quote content in a modal that borrows the source card's colours.
+  function openModal(key) {
+    var card = cardEl(key), mc = $('#modalCard');
+    TINT_VARS.forEach(function (p) {
+      var v = card.style.getPropertyValue(p);
+      if (v) mc.style.setProperty(p, v); else mc.style.removeProperty(p);
+    });
+    $('#modalLabel').innerHTML = $('.card-label', card).innerHTML;
+    var body;
+    if (key === 'word') body = lastWord ? wordHTML(lastWord, true) : $('#wordBody').innerHTML;
+    else body = lastQuote ? quoteHTML(lastQuote.text, lastQuote.author) : $('#quoteBody').innerHTML;
+    $('#modalBody').innerHTML = body;
+    panel.hidden = true;
+    modal.hidden = false;
+    backdrop.hidden = false;
+    mc.scrollTop = 0;
+  }
 
   function setHour12(v) {
     settings.hour12 = v;
@@ -991,8 +1074,27 @@
 
     $('#settingsBtn').addEventListener('click', openPanel);
     $('#panelClose').addEventListener('click', closePanel);
-    backdrop.addEventListener('click', closePanel);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' || e.keyCode === 27) closePanel(); });
+    $('#modalClose').addEventListener('click', closeOverlays);
+    modal.addEventListener('click', function (e) { if (e.target === modal) closeOverlays(); });
+    backdrop.addEventListener('click', closeOverlays);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' || e.keyCode === 27) closeOverlays(); });
+
+    // Pronounce buttons live inside tappable cards and the modal; capture phase keeps the tap from opening the modal.
+    document.addEventListener('click', function (e) {
+      var b = closestAttr(e.target, document.documentElement, 'data-word');
+      if (!b) return;
+      e.stopPropagation();
+      pronounce(b.getAttribute('data-word'), b.getAttribute('data-audio'));
+    }, true);
+    grid.addEventListener('click', function (e) {
+      var card = closestAttr(e.target, grid, 'data-stretch');
+      if (card) openModal(card.getAttribute('data-stretch'));
+    });
+    grid.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.keyCode !== 13 && e.keyCode !== 32) return;
+      var card = closestAttr(e.target, grid, 'data-stretch');
+      if (card && e.target === card) { e.preventDefault(); openModal(card.getAttribute('data-stretch')); }
+    });
 
     $all('#hourSeg button').forEach(function (b) {
       b.classList.toggle('active', (b.getAttribute('data-h12') === '1') === settings.hour12);
