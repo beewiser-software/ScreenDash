@@ -9,7 +9,7 @@
   <meta name="description" content="A calm always-on dashboard: clock, weather, word and quote of the day.">
   <title>ScreenDash</title>
   <!-- Bump ?v= on every deploy: iPad Safari caches assets aggressively, especially Home Screen web apps. -->
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 
@@ -64,6 +64,11 @@
     </section>
 
     <section class="card card-cond" data-span="1" aria-label="Today's conditions">
+      <div class="photos" id="condPhotos" aria-hidden="true" hidden>
+        <div class="ph ph-a"></div>
+        <div class="ph ph-b"></div>
+        <div class="photos-empty" hidden>Add photos in Settings &rarr; Photos</div>
+      </div>
       <div class="card-label" data-icon="sun">Today</div>
       <div class="cond-main">
         <div class="cond-icon" id="condIcon"></div>
@@ -188,6 +193,40 @@
     <div class="palette" id="textPalette"></div>
     <button id="resetWidgets" class="btn" type="button">Reset all widget colours</button>
 
+    <h3>Stocks</h3>
+    <div class="row">
+      <span>Word card shows</span>
+      <div class="seg" id="wordModeSeg">
+        <button type="button" data-mode="word">Word</button>
+        <button type="button" data-mode="stocks">Stocks</button>
+      </div>
+    </div>
+    <div class="stock-slots" id="listSlots" hidden></div>
+    <div class="row">
+      <span>Quote card shows</span>
+      <div class="seg" id="quoteModeSeg">
+        <button type="button" data-mode="quote">Quote</button>
+        <button type="button" data-mode="charts">Charts</button>
+      </div>
+    </div>
+    <div class="stock-slots" id="chartSlots" hidden></div>
+    <div class="note muted" id="stocksNote" hidden>Type a ticker symbol (e.g. AAPL) and pick a match. Prices refresh every few minutes; markets can be closed.</div>
+
+    <h3>Photos</h3>
+    <div class="row">
+      <span>Today card shows</span>
+      <div class="seg" id="condModeSeg">
+        <button type="button" data-mode="weather">Weather</button>
+        <button type="button" data-mode="photos">Photos</button>
+      </div>
+    </div>
+    <div id="photoTools" hidden>
+      <div class="photo-grid" id="photoGrid"></div>
+      <button id="photoAdd" class="btn" type="button">Add photos…</button>
+      <input id="photoInput" type="file" accept="image/*" multiple hidden>
+      <div class="note muted" id="photoNote" hidden></div>
+    </div>
+
     <h3>Location</h3>
     <div class="loc-current" id="locCurrent">Detecting…</div>
     <input id="locSearch" class="input" type="search" placeholder="Search for a city…"
@@ -196,13 +235,18 @@
     <button id="locAuto" class="btn" type="button">Use my current location</button>
 
     <p class="credits muted">
+      Private by design: settings, stock symbols and photos are saved only in this browser
+      (localStorage / IndexedDB). Nothing is uploaded to a cloud or server.
+    </p>
+    <p class="credits muted">
       Weather by <a href="https://open-meteo.com/" rel="noopener" target="_blank">Open-Meteo</a> ·
       Definitions by <a href="https://dictionaryapi.dev/" rel="noopener" target="_blank">Free Dictionary API</a> ·
-      Quotes by <a href="https://dummyjson.com/" rel="noopener" target="_blank">DummyJSON</a>
+      Quotes by <a href="https://dummyjson.com/" rel="noopener" target="_blank">DummyJSON</a> ·
+      Stock data by Yahoo Finance (delayed; informational only)
     </p>
   </div>
 
-  <script src="data.js?v=6"></script>
-  <script src="app.js?v=6"></script>
+  <script src="data.js?v=7"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
