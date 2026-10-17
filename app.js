@@ -122,7 +122,17 @@
     world: saved.world || { on: true, zones: [
       { name: 'New Delhi', tz: 'Asia/Kolkata' }, { name: 'London', tz: 'Europe/London' }, { name: 'Sydney', tz: 'Australia/Sydney' }
     ] },
-    cards: saved.cards || {} // key -> { bg: '#hex' | null, text: '#hex' | null }
+    cards: saved.cards || {}, // key -> { bg: '#hex' | null, text: '#hex' | null }
+    stocks: (function (s) {
+      s = s || {};
+      function grp(g, defs) {
+        g = g || {};
+        var syms = g.symbols || defs;
+        return { on: !!g.on, symbols: [String(syms[0] || ''), String(syms[1] || ''), String(syms[2] || '')] };
+      }
+      return { list: grp(s.list, ['AAPL', 'MSFT', 'GOOGL']), charts: grp(s.charts, ['SPY', '', '']) };
+    })(saved.stocks),
+    photos: { on: !!(saved.photos && saved.photos.on) }
   };
   function saveCustom() { store.set('custom', custom); }
   function themeById(id) {
@@ -158,7 +168,9 @@
     quote: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
     pin: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
-    speaker: '<path d="M11 5 6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/>'
+    speaker: '<path d="M11 5 6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+    trending: '<path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'
   };
   function svgIcon(name) {
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
@@ -173,6 +185,9 @@
     $all('[data-icon]').forEach(function (el) {
       el.insertAdjacentHTML('afterbegin', svgIcon(el.getAttribute('data-icon')));
     });
+  }
+  function setCardLabel(key, icon, text) {
+    $('.card-label', cardEl(key)).innerHTML = svgIcon(icon) + esc(text);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -264,6 +279,8 @@
     fitStretchCards();
     var canvas = $('#feelsChart');
     if (canvas && canvas.clientWidth !== lastChartWidth) drawChart();
+    var sCanvas = $('#stockChart');
+    if (sCanvas && sCanvas.clientWidth !== lastStockChartWidth) drawStocksChart();
   }
 
   // Shrink type in fixed-height cards step by step; if it still overflows, fade it and offer the modal.
@@ -444,7 +461,15 @@
     if (autoLocation) return Promise.resolve(autoLocation);
     return geolocate().then(reverseGeocode).catch(ipLocate).then(function (loc) {
       autoLocation = loc;
+      store.set('autoLocation', loc); // cache so reloads work offline/before permission prompts
       return loc;
+    }).catch(function (err) {
+      var cached = store.get('autoLocation');
+      if (cached && isFinite(cached.lat) && isFinite(cached.lon)) {
+        autoLocation = cached;
+        return cached;
+      }
+      throw err;
     });
   }
 
@@ -808,6 +833,7 @@
 
   function renderWord(entry) {
     lastWord = entry;
+    if (custom.stocks.list.on) return; // card is showing stocks; keep the word for the modal/switch-back
     $('#wordBody').innerHTML = wordHTML(entry, false);
     layout();
   }
@@ -838,6 +864,7 @@
   }
   function renderQuote(text, author) {
     lastQuote = { text: text, author: author };
+    if (custom.stocks.charts.on) return; // card is showing stock charts
     $('#quoteBody').innerHTML = quoteHTML(text, author);
     layout();
   }
@@ -861,6 +888,573 @@
         var q = pick(window.SD_QUOTES);
         renderQuote(q[0], q[1]);
       });
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Stocks (optional swap for the Word/Quote cards) — Yahoo Finance        */
+  /* ---------------------------------------------------------------------- */
+  var STOCKS_REFRESH_MS = 5 * 60 * 1000;
+  var STOCKS_STALE_MS = 4 * 60 * 1000;
+  // Yahoo Finance sends no CORS headers in normal browsers. Try direct first (works in
+  // kiosk/WebView setups and costs one failed request at most), then public CORS mirrors.
+  // Mirrors come and go, so several styles are tried and the working one is remembered.
+  var STOCK_FETCHERS = [
+    function (u) { return getJSON(u, 10000); },
+    function (u) { return getJSON('https://api.allorigins.win/raw?url=' + encodeURIComponent(u), 12000); },
+    function (u) {
+      return getJSON('https://api.allorigins.win/get?url=' + encodeURIComponent(u), 12000).then(function (r) {
+        if (!r || !r.contents) throw new Error('Empty proxy response');
+        return JSON.parse(r.contents);
+      });
+    },
+    function (u) { return getJSON('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), 12000); }
+  ];
+  var stockFetcher = 0;
+  function getStockJSON(url) {
+    var attempt = 0;
+    function tryNext() {
+      var idx = (stockFetcher + attempt) % STOCK_FETCHERS.length;
+      return STOCK_FETCHERS[idx](url).then(function (r) {
+        stockFetcher = idx;
+        return r;
+      }, function (err) {
+        attempt++;
+        if (attempt >= STOCK_FETCHERS.length) throw err;
+        return tryNext();
+      });
+    }
+    return tryNext();
+  }
+
+  var stocks = { data: {}, fetchedAt: 0 }; // SYMBOL -> quote + intraday series
+  var lastStockChartWidth = 0;
+
+  function activeStockSymbols() {
+    var out = [], seen = {};
+    function add(arr) {
+      arr.forEach(function (s) { if (s && !seen[s.toUpperCase()]) { seen[s.toUpperCase()] = 1; out.push(s.toUpperCase()); } });
+    }
+    if (custom.stocks.list.on) add(custom.stocks.list.symbols);
+    if (custom.stocks.charts.on) add(custom.stocks.charts.symbols);
+    return out;
+  }
+
+  function fetchStock(sym) {
+    var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) +
+      '?range=1d&interval=5m&includePrePost=false';
+    return getStockJSON(url).then(function (r) {
+      var res = r && r.chart && r.chart.result && r.chart.result[0];
+      if (!res || !res.meta) throw new Error('No data for ' + sym);
+      var meta = res.meta;
+      var prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
+      var price = meta.regularMarketPrice;
+      var ts = res.timestamp || [];
+      var closes = (res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || [];
+      var times = [], vals = [];
+      for (var i = 0; i < ts.length; i++) {
+        if (closes[i] == null) continue;
+        times.push(ts[i]);
+        vals.push(closes[i]);
+      }
+      if (price == null && vals.length) price = vals[vals.length - 1];
+      if (price == null || prev == null) throw new Error('No price for ' + sym);
+      return {
+        sym: String(meta.symbol || sym).toUpperCase(),
+        name: meta.shortName || meta.longName || '',
+        currency: meta.currency || '',
+        price: price,
+        prev: prev,
+        chg: price - prev,
+        pct: prev ? ((price - prev) / prev) * 100 : 0,
+        times: times,
+        vals: vals
+      };
+    });
+  }
+
+  function refreshStocks(force) {
+    var syms = activeStockSymbols();
+    if (!syms.length) return Promise.resolve();
+    if (!force && Date.now() - stocks.fetchedAt < STOCKS_STALE_MS) { renderStocks(); return Promise.resolve(); }
+    var pending = syms.map(function (s) {
+      return fetchStock(s).then(function (q) { stocks.data[s] = q; }, function () { /* keep last good quote */ });
+    });
+    return Promise.all(pending).then(function () {
+      stocks.fetchedAt = Date.now();
+      renderStocks();
+    });
+  }
+
+  function fmtPrice(v) {
+    var str = v < 1 ? v.toFixed(4) : v.toFixed(2);
+    var parts = str.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+  }
+  function fmtPct(p) { return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }
+  function fmtChg(c) { return (c >= 0 ? '+' : '\u2212') + fmtPrice(Math.abs(c)); }
+  function stocksUpdatedHTML() {
+    if (!stocks.fetchedAt) return '';
+    var d = new Date(stocks.fetchedAt);
+    return '<div class="stocks-updated">Updated ' + fmtHM(d.getHours(), d.getMinutes(), settings.hour12) + '</div>';
+  }
+
+  function stockRowsHTML(symbols, detailed) {
+    var rows = '';
+    symbols.forEach(function (s) {
+      if (!s) return;
+      var q = stocks.data[s.toUpperCase()];
+      if (!q) {
+        rows += '<div class="stock-row"><span class="stock-sym">' + esc(s.toUpperCase()) +
+          '</span><span class="stock-name">Waiting for data\u2026</span></div>';
+        return;
+      }
+      var up = q.chg >= 0;
+      rows += '<div class="stock-row"><span class="stock-sym">' + esc(q.sym) + '</span>' +
+        '<span class="stock-name">' + esc(q.name) + '</span>' +
+        '<span class="stock-price">' + fmtPrice(q.price) +
+        (detailed && q.currency ? ' <span class="muted">' + esc(q.currency) + '</span>' : '') + '</span>' +
+        '<span class="stock-chg ' + (up ? 'up' : 'down') + '">' + (up ? '\u25b2' : '\u25bc') + ' ' +
+        (detailed ? fmtChg(q.chg) + ' (' + fmtPct(q.pct) + ')' : fmtPct(q.pct)) + '</span></div>';
+    });
+    return rows;
+  }
+
+  function renderStocksList() {
+    var rows = stockRowsHTML(custom.stocks.list.symbols, false);
+    if (!rows) rows = '<div class="muted">Add stock symbols in Settings \u2192 Stocks.</div>';
+    $('#wordBody').innerHTML = '<div class="stocks">' + rows + stocksUpdatedHTML() + '</div>';
+    layout();
+  }
+
+  function stocksModalHTML(group) {
+    var rows = stockRowsHTML(custom.stocks[group].symbols, true);
+    if (!rows) rows = '<div class="muted">Add stock symbols in Settings \u2192 Stocks.</div>';
+    return '<div class="stocks">' + rows + stocksUpdatedHTML() + '</div>';
+  }
+
+  function stockChartColors() {
+    var card = cardEl('quote');
+    return [cssVar('--tint', '#f472b6', card), cssVar('--accent2', '#38bdf8'), cssVar('--accent', '#fbbf24')];
+  }
+
+  function renderStocksChart() {
+    var colors = stockChartColors();
+    var li = 0;
+    var legend = custom.stocks.charts.symbols.map(function (s) {
+      if (!s) return '';
+      var q = stocks.data[s.toUpperCase()];
+      var color = colors[li % colors.length];
+      li++;
+      return '<span class="sl"><span class="sl-dot" style="background:' + esc(color) + '"></span>' +
+        '<span class="sl-sym">' + esc(s.toUpperCase()) + '</span>' +
+        (q ? '<span class="' + (q.chg >= 0 ? 'up' : 'down') + '">' + fmtPct(q.pct) + '</span>' : '<span class="muted">\u2026</span>') +
+        '</span>';
+    }).join('');
+    $('#quoteBody').innerHTML = '<div class="stocks-chart">' +
+      (legend ? '<div class="stocks-legend">' + legend + '</div>' : '') +
+      '<div class="stock-chart-wrap"><canvas id="stockChart"></canvas>' +
+      '<div class="chart-empty muted" id="stockChartEmpty">' +
+      (legend ? 'Loading\u2026' : 'Add chart symbols in Settings \u2192 Stocks.') + '</div></div></div>';
+    layout();
+    drawStocksChart();
+  }
+
+  // Intraday lines plotted as % change vs the previous close, so up to 3 symbols share one axis.
+  function drawStocksChart() {
+    var canvas = $('#stockChart');
+    if (!canvas || !canvas.getContext) return;
+    var cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+    if (!cssW || !cssH) return;
+    lastStockChartWidth = cssW;
+
+    var colors = stockChartColors();
+    var series = [];
+    var ci = 0;
+    custom.stocks.charts.symbols.forEach(function (s) {
+      if (!s) return;
+      var color = colors[ci % colors.length]; // same slot order as the legend
+      ci++;
+      var q = stocks.data[s.toUpperCase()];
+      if (!q || q.vals.length < 2 || !q.prev) return;
+      var pts = [];
+      for (var j = 0; j < q.vals.length; j++) pts.push({ t: q.times[j], v: (q.vals[j] / q.prev - 1) * 100 });
+      series.push({ sym: q.sym, pts: pts, color: color });
+    });
+
+    var empty = $('#stockChartEmpty');
+    if (empty) {
+      if (series.length) empty.hidden = true;
+      else {
+        var haveSyms = false;
+        custom.stocks.charts.symbols.forEach(function (s) { if (s) haveSyms = true; });
+        empty.hidden = false;
+        if (haveSyms && stocks.fetchedAt) empty.textContent = 'Chart data unavailable right now.';
+      }
+    }
+
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cssW, cssH);
+    if (!series.length) return;
+
+    var card = cardEl('quote');
+    var muted = cssVar('--muted', '#94a3b8', card);
+    var gridC = cssVar('--tint-line', 'rgba(128,128,128,0.3)', card);
+    var font = cssVar('--font', 'sans-serif');
+
+    var t0 = Infinity, t1 = -Infinity, vMin = 0, vMax = 0;
+    series.forEach(function (sr) {
+      sr.pts.forEach(function (p) {
+        if (p.t < t0) t0 = p.t;
+        if (p.t > t1) t1 = p.t;
+        if (p.v < vMin) vMin = p.v;
+        if (p.v > vMax) vMax = p.v;
+      });
+    });
+    if (t1 <= t0) t1 = t0 + 1;
+    var vr = vMax - vMin;
+    if (vr < 0.4) { var mid = (vMin + vMax) / 2; vMin = mid - 0.2; vMax = mid + 0.2; }
+    else { vMin -= vr * 0.12; vMax += vr * 0.12; }
+    vr = vMax - vMin;
+
+    var padL = 46, padR = 12, padT = 8, padB = 20;
+    var w = cssW - padL - padR, h = cssH - padT - padB;
+    function X(t) { return padL + ((t - t0) / (t1 - t0)) * w; }
+    function Y(v) { return padT + (1 - (v - vMin) / vr) * h; }
+
+    ctx.font = '11px ' + font;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = gridC;
+    ctx.fillStyle = muted;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (var g = 0; g <= 3; g++) {
+      var v = vMin + (vr * g) / 3;
+      var yy = Math.round(Y(v)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + w, yy); ctx.stroke();
+      ctx.fillText((v >= 0 ? '+' : '') + v.toFixed(vr < 2 ? 2 : 1) + '%', padL - 7, yy);
+    }
+    // Zero (previous close) baseline
+    if (vMin < 0 && vMax > 0) {
+      ctx.save();
+      if (ctx.setLineDash) ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = muted;
+      ctx.globalAlpha = 0.55;
+      var zy = Math.round(Y(0)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(padL, zy); ctx.lineTo(padL + w, zy); ctx.stroke();
+      ctx.restore();
+    }
+    // Session start/end labels (device-local time)
+    ctx.textBaseline = 'top';
+    var dStart = new Date(t0 * 1000), dEnd = new Date(t1 * 1000);
+    ctx.textAlign = 'left';
+    ctx.fillText(fmtHM(dStart.getHours(), dStart.getMinutes(), settings.hour12), padL, padT + h + 7);
+    ctx.textAlign = 'right';
+    ctx.fillText(fmtHM(dEnd.getHours(), dEnd.getMinutes(), settings.hour12), padL + w, padT + h + 7);
+
+    series.forEach(function (sr) {
+      ctx.strokeStyle = sr.color;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (var i = 0; i < sr.pts.length; i++) {
+        var x = X(sr.pts[i].t), y = Y(sr.pts[i].v);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    });
+  }
+
+  function renderStocks() {
+    if (custom.stocks.list.on) renderStocksList();
+    if (custom.stocks.charts.on) renderStocksChart();
+  }
+
+  function applyStocks() {
+    var list = custom.stocks.list, charts = custom.stocks.charts;
+    $all('#wordModeSeg button').forEach(function (b) {
+      b.classList.toggle('active', (b.getAttribute('data-mode') === 'stocks') === list.on);
+    });
+    $all('#quoteModeSeg button').forEach(function (b) {
+      b.classList.toggle('active', (b.getAttribute('data-mode') === 'charts') === charts.on);
+    });
+    $('#listSlots').hidden = !list.on;
+    $('#chartSlots').hidden = !charts.on;
+    $('#stocksNote').hidden = !(list.on || charts.on);
+
+    setCardLabel('word', list.on ? 'trending' : 'book', list.on ? 'Stocks' : 'Word of the day');
+    cardEl('word').setAttribute('aria-label', list.on ? 'Stocks (tap for details)' : 'Word of the day (tap for details)');
+    setCardLabel('quote', charts.on ? 'trending' : 'quote', charts.on ? 'Markets' : 'Quote of the day');
+    cardEl('quote').setAttribute('aria-label', charts.on ? 'Stock charts (tap for details)' : 'Quote of the day (tap for details)');
+
+    if (list.on) renderStocksList();
+    else if (lastWord) { $('#wordBody').innerHTML = wordHTML(lastWord, false); }
+    else { $('#wordBody').innerHTML = '<div class="muted">Loading\u2026</div>'; loadWord(); }
+    if (charts.on) renderStocksChart();
+    else if (lastQuote) { $('#quoteBody').innerHTML = quoteHTML(lastQuote.text, lastQuote.author); }
+    else { $('#quoteBody').innerHTML = '<div class="quote-mark" aria-hidden="true">\u201c</div><blockquote class="quote-text">Loading\u2026</blockquote>'; loadQuote(); }
+    if (list.on || charts.on) refreshStocks();
+    layout();
+  }
+
+  /* Symbol pickers in Settings: suggestions while typing, validation on commit */
+  function stockSearch(q) {
+    var url = 'https://query1.finance.yahoo.com/v1/finance/search?q=' + encodeURIComponent(q) +
+      '&quotesCount=6&newsCount=0&listsCount=0';
+    return getStockJSON(url).then(function (r) {
+      return ((r && r.quotes) || []).filter(function (x) { return x && x.symbol; }).map(function (x) {
+        return { symbol: String(x.symbol).toUpperCase(), name: x.shortname || x.longname || '', exch: x.exchDisp || x.exchange || '' };
+      });
+    });
+  }
+
+  function buildStockSlots(wrapSel, group) {
+    var wrap = $(wrapSel);
+    wrap.innerHTML = [0, 1, 2].map(function (i) {
+      return '<div class="stock-slot">' +
+        '<input class="input" data-slot="' + i + '" type="search" placeholder="Symbol ' + (i + 1) + ' (e.g. AAPL)"' +
+        ' autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">' +
+        '<div class="results"></div><div class="slot-err" hidden></div></div>';
+    }).join('');
+    $all('input', wrap).forEach(function (inp, i) {
+      var results = $('.results', inp.parentNode);
+      var err = $('.slot-err', inp.parentNode);
+      inp.value = custom.stocks[group].symbols[i] || '';
+
+      function commit(sym) {
+        custom.stocks[group].symbols[i] = sym;
+        saveCustom();
+        inp.value = sym;
+        inp.classList.remove('invalid');
+        err.hidden = true;
+        results.innerHTML = '';
+        if (sym && !stocks.data[sym]) {
+          renderStocks(); // show the "waiting" row right away
+          fetchStock(sym).then(function (q) {
+            stocks.data[sym] = q;
+            renderStocks();
+          }, function () { renderStocks(); });
+        } else {
+          renderStocks();
+        }
+        layout();
+      }
+
+      inp.addEventListener('input', debounce(function () {
+        var q = inp.value.trim();
+        inp.classList.remove('invalid');
+        err.hidden = true;
+        if (q.length < 1) { results.innerHTML = ''; if (!inp.value.trim()) commit(''); return; }
+        stockSearch(q).then(function (list) {
+          if (inp.value.trim() !== q) return; // stale response
+          results.innerHTML = list.length
+            ? list.map(function (m) {
+                return '<button type="button" data-sym="' + esc(m.symbol) + '"><strong>' + esc(m.symbol) + '</strong> \u00b7 ' +
+                  esc(m.name) + (m.exch ? ' <span class="muted">(' + esc(m.exch) + ')</span>' : '') + '</button>';
+              }).join('')
+            : '<div class="muted">No matches</div>';
+        }).catch(function () { results.innerHTML = '<div class="muted">Search unavailable</div>'; });
+      }, 300));
+
+      results.addEventListener('click', function (e) {
+        var b = closestAttr(e.target, results, 'data-sym');
+        if (b) commit(b.getAttribute('data-sym'));
+      });
+
+      inp.addEventListener('change', function () {
+        var v = inp.value.trim().toUpperCase();
+        if (!v) { commit(''); return; }
+        if (v === (custom.stocks[group].symbols[i] || '')) return;
+        fetchStock(v).then(function (q) {
+          stocks.data[q.sym] = q;
+          commit(q.sym);
+        }, function () {
+          if (inp.value.trim().toUpperCase() !== v) return; // user moved on
+          inp.classList.add('invalid');
+          err.textContent = '\u201c' + v + '\u201d not found. Pick a suggestion or try another symbol.';
+          err.hidden = false;
+        });
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Photo slideshow (optional swap for the Today card) — IndexedDB only    */
+  /* ---------------------------------------------------------------------- */
+  var PHOTO_MAX_EDGE = 1600, PHOTO_JPEG_Q = 0.82, PHOTO_INTERVAL_MS = 10000, PHOTO_MAX_COUNT = 40;
+  var photos = { items: [], idx: 0, timer: null, front: 0, dbPromise: null, unavailable: false };
+
+  function photosDb() {
+    if (photos.dbPromise) return photos.dbPromise;
+    photos.dbPromise = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) return reject(new Error('IndexedDB unsupported'));
+      var req = indexedDB.open('screendash', 1);
+      req.onupgradeneeded = function (e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('IndexedDB error')); };
+    });
+    return photos.dbPromise;
+  }
+  function photosLoad() {
+    return photosDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var items = [];
+        var tx = db.transaction('photos', 'readonly');
+        // Cursor instead of getAll(): works on older Safari.
+        tx.objectStore('photos').openCursor().onsuccess = function (e) {
+          var c = e.target.result;
+          if (c) { items.push({ id: c.value.id, data: c.value.data }); c['continue'](); }
+        };
+        tx.oncomplete = function () { resolve(items); };
+        tx.onerror = tx.onabort = function () { reject(tx.error || new Error('Photo load failed')); };
+      });
+    });
+  }
+  function photosWrite(fn) {
+    return photosDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction('photos', 'readwrite');
+        fn(tx.objectStore('photos'));
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = tx.onabort = function () { reject(tx.error || new Error('Photo write failed')); };
+      });
+    });
+  }
+
+  // Downscale + recompress before storing so the DB stays small and rendering stays fast.
+  function readPhotoFile(file) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(img.width, img.height, 1));
+          var cw = Math.max(1, Math.round(img.width * scale)), ch = Math.max(1, Math.round(img.height * scale));
+          var cv = document.createElement('canvas');
+          cv.width = cw; cv.height = ch;
+          cv.getContext('2d').drawImage(img, 0, 0, cw, ch);
+          var out = '';
+          try { out = cv.toDataURL('image/jpeg', PHOTO_JPEG_Q); } catch (e) { /* tainted/odd format */ }
+          resolve(out && out.length > 32 ? out : fr.result);
+        };
+        img.onerror = function () { reject(new Error('Unreadable image')); };
+        img.src = fr.result;
+      };
+      fr.onerror = function () { reject(fr.error || new Error('Read failed')); };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  function photoNote(msg) {
+    var el = $('#photoNote');
+    el.textContent = msg || '';
+    el.hidden = !msg;
+  }
+
+  function reloadPhotos() {
+    return photosLoad().then(function (items) {
+      photos.items = items;
+    }, function () {
+      photos.unavailable = true;
+    }).then(function () {
+      renderPhotoGrid();
+      applyPhotoShow();
+    });
+  }
+
+  function addPhotoFiles(files) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    if (photos.unavailable) { photoNote('Photo storage is unavailable in this browser (private browsing?).'); return; }
+    var room = PHOTO_MAX_COUNT - photos.items.length;
+    if (room <= 0) { photoNote('Limit of ' + PHOTO_MAX_COUNT + ' photos reached. Remove some first.'); return; }
+    if (list.length > room) { list = list.slice(0, room); }
+    photoNote('Adding ' + list.length + ' photo' + (list.length > 1 ? 's' : '') + '\u2026');
+    var chain = Promise.resolve(), failed = 0;
+    list.forEach(function (f) {
+      chain = chain.then(function () {
+        return readPhotoFile(f).then(function (data) {
+          return photosWrite(function (s) { s.add({ data: data, added: Date.now() }); });
+        }).catch(function () { failed++; });
+      });
+    });
+    chain.then(function () {
+      photoNote(failed ? failed + ' photo' + (failed > 1 ? 's' : '') + ' could not be saved (storage full or unreadable).' : '');
+      return reloadPhotos();
+    });
+  }
+
+  function renderPhotoGrid() {
+    var el = $('#photoGrid');
+    if (photos.unavailable) {
+      el.innerHTML = '';
+      photoNote('Photo storage is unavailable in this browser (private browsing?).');
+      return;
+    }
+    el.innerHTML = photos.items.map(function (p) {
+      return '<div class="photo-th"><div class="im" style="background-image:url(&quot;' + p.data + '&quot;)"></div>' +
+        '<button type="button" class="rm" data-id="' + p.id + '" aria-label="Remove photo">&times;</button></div>';
+    }).join('');
+  }
+
+  function showPhoto(i) {
+    var wrap = $('#condPhotos');
+    var layers = [$('.ph-a', wrap), $('.ph-b', wrap)];
+    photos.front = 1 - photos.front;
+    var front = layers[photos.front], back = layers[1 - photos.front];
+    front.style.backgroundImage = 'url("' + photos.items[i].data + '")';
+    front.classList.add('show');
+    back.classList.remove('show');
+  }
+
+  function applyPhotoShow() {
+    var card = cardEl('cond'), wrap = $('#condPhotos');
+    var on = custom.photos.on;
+    clearInterval(photos.timer);
+    photos.timer = null;
+    card.classList.toggle('photos-on', on);
+    wrap.hidden = !on;
+    setCardLabel('cond', on ? 'image' : 'sun', on ? 'Photos' : 'Today');
+    card.setAttribute('aria-label', on ? 'Photo slideshow' : "Today's conditions");
+    var empty = $('.photos-empty', wrap);
+    if (on) {
+      if (photos.unavailable) {
+        empty.textContent = 'Photo storage is unavailable in this browser.';
+        empty.hidden = false;
+      } else if (!photos.items.length) {
+        empty.hidden = false;
+      } else {
+        empty.hidden = true;
+        if (photos.idx >= photos.items.length) photos.idx = 0;
+        showPhoto(photos.idx);
+        if (photos.items.length > 1) {
+          photos.timer = setInterval(function () {
+            if (document.hidden) return;
+            photos.idx = (photos.idx + 1) % photos.items.length;
+            showPhoto(photos.idx);
+          }, PHOTO_INTERVAL_MS);
+        }
+      }
+    } else {
+      $all('.ph', wrap).forEach(function (l) { l.classList.remove('show'); });
+    }
+    layout();
+  }
+
+  function applyPhotos() {
+    $all('#condModeSeg button').forEach(function (b) {
+      b.classList.toggle('active', (b.getAttribute('data-mode') === 'photos') === custom.photos.on);
+    });
+    $('#photoTools').hidden = !custom.photos.on;
+    applyPhotoShow();
   }
 
   /* ---------------------------------------------------------------------- */
@@ -923,6 +1517,7 @@
     });
     drawChart();
     vizRefreshColors();
+    if (custom.stocks.charts.on) renderStocksChart(); // legend + line colours follow the card tint
   }
 
   function applyFonts() {
@@ -933,6 +1528,7 @@
     $all('#clockFontPick .font-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-font') === custom.clockFont); });
     layout();
     drawChart();
+    drawStocksChart();
   }
 
   function applyTheme(id, save) {
@@ -1172,8 +1768,13 @@
     });
     $('#modalLabel').innerHTML = $('.card-label', card).innerHTML;
     var body;
-    if (key === 'word') body = lastWord ? wordHTML(lastWord, true) : $('#wordBody').innerHTML;
-    else body = lastQuote ? quoteHTML(lastQuote.text, lastQuote.author) : $('#quoteBody').innerHTML;
+    if (key === 'word') {
+      body = custom.stocks.list.on ? stocksModalHTML('list')
+        : lastWord ? wordHTML(lastWord, true) : $('#wordBody').innerHTML;
+    } else {
+      body = custom.stocks.charts.on ? stocksModalHTML('charts')
+        : lastQuote ? quoteHTML(lastQuote.text, lastQuote.author) : $('#quoteBody').innerHTML;
+    }
     $('#modalBody').innerHTML = body;
     panel.hidden = true;
     modal.hidden = false;
@@ -1191,6 +1792,7 @@
     lastWorldMinute = -1;
     tickClock();
     renderWeather();
+    renderStocks(); // "Updated" time + chart axis labels follow the clock format
   }
 
   function setManualLocation(loc) {
@@ -1359,6 +1961,46 @@
     });
     refreshWidgetControls();
 
+    // Stocks: card swaps + symbol slots
+    $('#wordModeSeg').addEventListener('click', function (e) {
+      var b = closestAttr(e.target, this, 'data-mode');
+      if (!b) return;
+      custom.stocks.list.on = b.getAttribute('data-mode') === 'stocks';
+      saveCustom();
+      applyStocks();
+    });
+    $('#quoteModeSeg').addEventListener('click', function (e) {
+      var b = closestAttr(e.target, this, 'data-mode');
+      if (!b) return;
+      custom.stocks.charts.on = b.getAttribute('data-mode') === 'charts';
+      saveCustom();
+      applyStocks();
+    });
+    buildStockSlots('#listSlots', 'list');
+    buildStockSlots('#chartSlots', 'charts');
+
+    // Photos: Today card swap + local photo manager
+    $('#condModeSeg').addEventListener('click', function (e) {
+      var b = closestAttr(e.target, this, 'data-mode');
+      if (!b) return;
+      custom.photos.on = b.getAttribute('data-mode') === 'photos';
+      saveCustom();
+      applyPhotos();
+    });
+    $('#photoAdd').addEventListener('click', function () { $('#photoInput').click(); });
+    $('#photoInput').addEventListener('change', function () {
+      addPhotoFiles(this.files);
+      this.value = '';
+    });
+    $('#photoGrid').addEventListener('click', function (e) {
+      var b = closestAttr(e.target, this, 'data-id');
+      if (!b) return;
+      var id = parseInt(b.getAttribute('data-id'), 10);
+      photosWrite(function (s) { s['delete'](id); })
+        .then(reloadPhotos)
+        .catch(function () { photoNote('Could not remove that photo.'); });
+    });
+
     var search = $('#locSearch'), results = $('#locResults');
     search.addEventListener('input', debounce(function () {
       var q = search.value.trim();
@@ -1442,14 +2084,18 @@
     startClock();
     layout();
     applyAudio();
+    applyStocks(); // renders stocks or triggers loadWord/loadQuote for the active cards
+    applyPhotos();
+    reloadPhotos();
 
     refreshWeather();
-    loadWord();
-    loadQuote();
 
     setInterval(function () { if (!document.hidden) refreshWeather(); }, WEATHER_REFRESH_MS);
+    setInterval(function () { if (!document.hidden) refreshStocks(true); }, STOCKS_REFRESH_MS);
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden && Date.now() - weather.fetchedAt > WEATHER_STALE_MS) refreshWeather();
+      if (document.hidden) return;
+      if (Date.now() - weather.fetchedAt > WEATHER_STALE_MS) refreshWeather();
+      refreshStocks(); // no-op unless enabled and stale
     });
 
     var relayout = debounce(function () { layout(); drawChart(); }, 120);

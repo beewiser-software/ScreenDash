@@ -556,6 +556,91 @@ button { font-family: inherit; }
 .quote-text.quote-long { font-size: calc(1.05rem * var(--fit, 1)); line-height: 1.5; }
 .quote-author { margin-top: 12px; font-size: calc(0.95rem * var(--fit, 1)); color: var(--muted); }
 
+/* ---------- Stocks (optional swap for the Word/Quote cards) ---------- */
+.stocks { font-variant-numeric: tabular-nums; -webkit-font-feature-settings: "tnum"; font-feature-settings: "tnum"; }
+.stock-row {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: baseline;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--tint-line);
+}
+.stock-row:last-child { border-bottom: 0; }
+.stock-sym { font-size: calc(1.1rem * var(--fit, 1)); font-weight: 700; letter-spacing: 0.02em; }
+.stock-name {
+  -webkit-flex: 1 1 auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 10px;
+  font-size: calc(0.78rem * var(--fit, 1));
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stock-price { margin-left: 10px; font-size: calc(1.1rem * var(--fit, 1)); font-weight: 600; white-space: nowrap; }
+.stock-chg { min-width: 84px; margin-left: 10px; font-size: calc(0.9rem * var(--fit, 1)); font-weight: 600; text-align: right; white-space: nowrap; }
+.stock-chg.up { color: #10b981; }
+.stock-chg.down { color: #ef4444; }
+.stocks-updated { margin-top: 8px; font-size: calc(0.72rem * var(--fit, 1)); color: var(--muted); }
+
+.stocks-chart {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  height: 100%;
+}
+.stocks-legend { -webkit-flex-shrink: 0; flex-shrink: 0; margin-bottom: 8px; font-size: 0.82rem; font-variant-numeric: tabular-nums; -webkit-font-feature-settings: "tnum"; font-feature-settings: "tnum"; }
+.sl { display: -webkit-inline-flex; display: inline-flex; -webkit-align-items: center; align-items: center; margin-right: 14px; white-space: nowrap; }
+.sl-dot { width: 12px; height: 3px; margin-right: 6px; border-radius: 2px; -webkit-flex-shrink: 0; flex-shrink: 0; }
+.sl .up { color: #10b981; } .sl .down { color: #ef4444; }
+.sl-sym { margin-right: 6px; font-weight: 600; }
+.stock-chart-wrap { position: relative; -webkit-flex: 1 1 auto; flex: 1 1 auto; min-height: 120px; }
+#stockChart { position: absolute; top: 0; left: 0; display: block; width: 100%; height: 100%; }
+.stocks .muted, .stocks-chart .muted { font-size: 0.9rem; }
+
+/* ---------- Photo slideshow (optional swap for the Today card) ---------- */
+.photos { display: none; }
+.card-cond.photos-on { min-height: 240px; }
+.card-cond.photos-on .photos {
+  display: block;
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: #0b0f19;
+}
+.card-cond.photos-on > * { position: relative; z-index: 1; }
+.card-cond.photos-on .cond-main, .card-cond.photos-on .stats { display: none; }
+.card-cond.photos-on .card-label { color: rgba(255, 255, 255, 0.92); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.photos .ph {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  -webkit-transition: opacity 1.2s ease;
+  transition: opacity 1.2s ease;
+}
+.photos .ph.show { opacity: 1; }
+.photos-empty {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
 /* ---------- Stretchable cards (fixed height, tap for full content) ---------- */
 .card[data-stretch] {
   display: -webkit-flex;
@@ -887,6 +972,46 @@ select.input {
 }
 .dot.active { box-shadow: 0 0 0 2px var(--bg0), 0 0 0 4px var(--accent); }
 .palette.disabled { opacity: 0.35; pointer-events: none; }
+
+/* Stock symbol slots in Settings */
+.stock-slots { margin: 10px 0 4px; }
+.stock-slots + .row { margin-top: 12px; }
+.stock-slot { position: relative; margin-bottom: 8px; }
+.stock-slot .input { text-transform: uppercase; }
+.stock-slot .input.invalid { border-color: #ef4444; }
+.stock-slot .slot-err { margin: 4px 2px 0; font-size: 0.78rem; color: #ef4444; }
+.stock-slot .results { margin: 4px 0 0; }
+
+/* Photo manager in Settings */
+#photoTools { margin-top: 12px; }
+.photo-grid {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  margin: 0 -4px 10px;
+}
+.photo-th { position: relative; width: 25%; padding: 4px; }
+.photo-th .im {
+  height: 72px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background-size: cover;
+  background-position: center;
+}
+.photo-th .rm {
+  position: absolute;
+  top: 0; right: 0;
+  width: 22px; height: 22px;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 50%;
+  background: var(--bg0);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
 
 /* ---------- Breakpoints (match columns in app.js) ---------- */
 @media (max-width: 599px) {
